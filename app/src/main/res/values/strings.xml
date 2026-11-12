@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Shell texts for this app -->
+    <string name="settings_subtitle">Photo, RAW, video and privacy</string>
+    <string name="app_lock_subtitle">Ask for an app PIN (and optionally your fingerprint) when opening CameraCtrl.</string>
+    <string name="app_lock_footer">CameraCtrl works fully offline: it has no internet permission, analytics or location access. Photos and videos go straight to your library on this phone.</string>
+    <string name="lock_prompt_subtitle">Your camera</string>
+    <string name="lock_forgot_body">The PIN can\'t be recovered. CameraCtrl will reset its settings and turn the app lock off. The photos and videos you took are in your library and aren\'t touched.</string>
+
+    <!-- Viewfinder -->
+    <string name="cam_permission_title">Allow the camera</string>
+    <string name="cam_permission_body">CameraCtrl needs the camera to take photos and videos. They\'re saved on this phone only.</string>
+    <string name="allow_camera">Allow camera</string>
+    <string name="no_camera">This phone has no camera CameraCtrl can use</string>
+    <string name="fmt_jpeg">JPEG</string>
+    <string name="fmt_raw_jpeg">RAW+JPEG</string>
+    <string name="fmt_raw">RAW</string>
+    <string name="max_res">MAX RES</string>
+    <string name="timer">Self-timer</string>
+    <string name="timer_off">Off</string>
+    <string name="grid">Grid</string>
+    <string name="torch">Torch</string>
+    <string name="take_photo">Take photo</string>
+    <string name="start_recording">Start recording</string>
+    <string name="stop_recording">Stop recording</string>
+    <string name="switch_camera">Switch camera</string>
+    <string name="last_capture">Open the last photo or video</string>
+    <string name="mode_photo">PHOTO</string>
+    <string name="mode_video">VIDEO</string>
+    <string name="mode_pro">PRO</string>
+    <string name="lens_auto">AUTO</string>
+    <string name="no_raw_here">This lens has no RAW output; saving JPEG</string>
+    <string name="err_open">Couldn\'t open the camera</string>
+    <string name="err_disabled">Camera access is off. Turn it on in Quick Settings or Settings &gt; Privacy.</string>
+    <string name="err_in_use">Another app is using the camera</string>
+    <string name="err_config">This lens can\'t combine these outputs. Try another format.</string>
+    <string name="err_capture">Couldn\'t save. Try again.</string>
+
+    <!-- Pro -->
+    <string name="auto">AUTO</string>
+    <string name="af">AF</string>
+    <string name="pro_iso">ISO</string>
+    <string name="pro_shutter">SHUTTER</string>
+    <string name="pro_focus">FOCUS</string>
+    <string name="pro_wb">WB</string>
+    <string name="pro_ev">EV</string>
+    <string name="no_manual">This lens doesn\'t allow manual ISO and shutter speed</string>
+    <string name="fixed_focus">Fixed focus</string>
+    <string name="no_ev">This lens has no exposure compensation</string>
+    <string name="ev_manual">Exposure compensation works with AUTO exposure</string>
+    <string name="video_manual_note">Long shutter speeds lower the video frame rate</string>
+    <string name="wb_daylight">Daylight</string>
+    <string name="wb_cloudy">Cloudy</string>
+    <string name="wb_shade">Shade</string>
+    <string name="wb_twilight">Twilight</string>
+    <string name="wb_fluorescent">Fluorescent</string>
+    <string name="wb_warm_fluorescent">Warm fluorescent</string>
+    <string name="wb_incandescent">Tungsten</string>
+
+    <!-- Camera modes -->
+    <string name="modes_title">Camera modes</string>
+    <string name="modes_intro">What this phone\'s camera reports to apps, lens by lens. CameraCtrl reads it at start and offers every standard Android mode listed here; nothing is specific to one phone model.</string>
+    <string name="lens_back">Back</string>
+    <string name="lens_front">Front</string>
+    <string name="lens_external">External</string>
+    <string name="cam_id">camera %1$s</string>
+    <string name="cam_physical">lens %1$s of camera %2$s</string>
+    <string name="focal">%1$d mm equivalent (%2$s mm)</string>
+    <string name="kind_logical">Multi-camera: the phone switches between lenses %1$s as you zoom (AUTO).</string>
+    <string name="kind_physical">One lens of a multi-camera, used on its own.</string>
+    <string name="row_lens">Lens</string>
+    <string name="row_sensor">Sensor</string>
+    <string name="row_raw">RAW</string>
+    <string name="row_maxres">Maximum resolution mode</string>
+    <string name="row_jpeg">JPEG</string>
+    <string name="row_video">Video</string>
+    <string name="row_manual">Manual control</string>
+    <string name="row_level">Camera2 support level</string>
+    <string name="not_offered">Not offered</string>
+    <string name="raw16">RAW16 → DNG</string>
+    <string name="raw12">RAW12 → DNG</string>
+    <string name="raw10">RAW10 → DNG</string>
+    <string name="raw_private">RAW_PRIVATE (private layout, can\'t be saved)</string>
+    <string name="ten_bit">10-bit HDR</string>
+    <string name="closest_focus">closest focus %1$s</string>
+
+    <!-- Settings -->
+    <string name="group_photo">Photo</string>
+    <string name="photo_format">Format</string>
+    <string name="fmt_raw_jpeg_long">RAW (DNG) + JPEG</string>
+    <string name="fmt_raw_long">RAW (DNG) only</string>
+    <string name="fmt_jpeg_long">JPEG only</string>
+    <string name="raw_profile">RAW profile</string>
+    <string name="raw_auto">Best this lens offers</string>
+    <string name="max_res_setting">Maximum resolution</string>
+    <string name="max_res_sub">Use the sensor\'s full resolution where the lens offers Android\'s maximum resolution mode. One file per shot.</string>
+    <string name="jpeg_quality">JPEG quality</string>
+    <string name="grid_sub">Rule-of-thirds lines over the viewfinder</string>
+    <string name="shutter_sound">Shutter sound</string>
+    <string name="shutter_sound_sub">Some countries require it; your phone may play it anyway</string>
+    <string name="photo_footer">RAW files are the sensor\'s own data, saved as DNG for any RAW editor such as LumenCtrl. Photos go to DCIM/CameraCtrl, videos to Movies/CameraCtrl. No location is ever saved.</string>
+    <string name="group_video">Video</string>
+    <string name="video_quality">Resolution</string>
+    <string name="video_codec">Codec</string>
+    <string name="codec_hevc">HEVC (H.265), smaller files</string>
+    <string name="codec_avc">H.264, plays everywhere</string>
+</resources>

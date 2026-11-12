@@ -1,0 +1,544 @@
+package com.vknxworks.cameractrl.camera
+
+import android.Manifest
+import android.annotation.SuppressLint
+import android.content.Context
+import android.graphics.Rect
+import android.graphics.SurfaceTexture
+import android.hardware.camera2.CameraCaptureSession
+import android.hardware.camera2.CameraDevice
+import android.hardware.camera2.CameraManager
+import android.hardware.camera2.CameraMetadata
+import android.hardware.camera2.CaptureFailure
+import android.hardware.camera2.CaptureRequest
+import android.hardware.camera2.TotalCaptureResult
+import android.hardware.camera2.params.MeteringRectangle
+import android.hardware.camera2.params.OutputConfiguration
+import android.hardware.camera2.params.SessionConfiguration
+import android.media.Image
+import android.media.ImageReader
+import android.media.MediaActionSound
+import android.media.MediaCodec
+import android.media.MediaRecorder
+import android.net.Uri
+import android.os.Handler
+import android.os.HandlerThread
+import android.os.ParcelFileDescriptor
+import android.os.SystemClock
+import android.util.Size
+import android.view.Surface
+import com.vknxworks.cameractrl.R
+import com.vknxworks.cameractrl.ui.common.hasPermission
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.concurrent.Executor
+import kotlin.math.abs
+import kotlin.math.min
+
+enum class PhotoFormat { JPEG, RAW_JPEG, RAW }
+enum class Mode { PHOTO, VIDEO }
+
+/** Exposure, focus, white balance, torch and zoom. [auto] off means ISO and shutter are set by hand. */
+data class Manual(
+    val auto: Boolean = true,
+    val iso: Int = 100,
+    val exposureNs: Long = 10_000_000L,
+    /** Focus in diopters (0 = infinity); null = autofocus. */
+    val focus: Float? = null,
+    val ev: Int = 0,
+    val awb: Int = CameraMetadata.CONTROL_AWB_MODE_AUTO,
+    val torch: Boolean = false,
+    val zoom: Float = 1f,
+)
+
+/** Everything that needs a new camera session when it changes. */
+data class Setup(
+    val lens: Lens,
+    val mode: Mode,
+    val format: PhotoFormat,
+    val raw: RawProfile?,
+    val maxRes: Boolean,
+    val videoSize: Size?,
+    val hevc: Boolean,
+    val jpegQuality: Int,
+)
+
+data class CamState(
+    val ready: Boolean = false,
+    val busy: Boolean = false,
+    val recording: Boolean = false,
+    val recordStart: Long = 0L,
+    val error: Int? = null,
+    val lastUri: Uri? = null,
+    val lastIsVideo: Boolean = false,
+    /** What the open session actually saves (for the status line). */
+    val saving: String = "",
+)
+
+/**
+ * Camera2 on its own thread. Photos: JPEG, RAW (DNG) or both, in the lens's normal mode or, where Android
+ * offers it, its maximum-resolution mode. Video: MediaRecorder on a persistent surface.
+ */
+class CameraController(private val context: Context) {
+    private val cm = context.getSystemService(CameraManager::class.java)
+    private val thread = HandlerThread("CameraCtrl").apply { start() }
+    private val handler = Handler(thread.looper)
+    private val executor = Executor { handler.post(it) }
+    private val io = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    val state = MutableStateFlow(CamState())
+
+    private var device: CameraDevice? = null
+    private var session: CameraCaptureSession? = null
+    private var previewSurface: Surface? = null
+    private var jpegReader: ImageReader? = null
+    private var rawReader: ImageReader? = null
+    private var maxResActive = false
+    private var setup: Setup? = null
+    private var manual = Manual()
+    private var regions: Array<MeteringRectangle>? = null
+    private var pending: Pending? = null
+    private var openToken = 0
+
+    private var persistent: Surface? = null
+    private var recorder: MediaRecorder? = null
+    private var recordUri: Uri? = null
+    private var recordPfd: ParcelFileDescriptor? = null
+
+    /** Device rotation in degrees clockwise (0, 90, 180, 270), from the screen's orientation listener. */
+    @Volatile var orientation = 0
+    @Volatile var shutterSound = true
+    private val sound = MediaActionSound()
+
+    private class Pending(val wantJpeg: Boolean, val wantRaw: Boolean) {
+        val result = CompletableDeferred<TotalCaptureResult>()
+        val jpeg = CompletableDeferred<Image>()
+        val raw = CompletableDeferred<Image>()
+    }
+
+    // ---------- Opening ----------
+
+    @SuppressLint("MissingPermission")
+    fun open(s: Setup, texture: SurfaceTexture) {
+        val token = ++openToken
+        handler.post {
+            if (token != openToken) return@post
+            closeInternal()
+            setup = s
+            val preview = choosePreview(s)
+            texture.setDefaultBufferSize(preview.width, preview.height)
+            previewSurface = Surface(texture)
+            state.update { it.copy(ready = false, error = null) }
+            try {
+                cm.openCamera(s.lens.id, executor, object : CameraDevice.StateCallback() {
+                    override fun onOpened(d: CameraDevice) {
+                        if (token != openToken) { d.close(); return }
+                        device = d
+                        createSession(s)
+                    }
+
+                    override fun onDisconnected(d: CameraDevice) {
+                        d.close()
+                        if (device == d) device = null
+                        state.update { it.copy(ready = false) }
+                    }
+
+                    override fun onError(d: CameraDevice, error: Int) {
+                        d.close()
+                        if (device == d) device = null
+                        state.update { it.copy(ready = false, error = when (error) { ERROR_CAMERA_IN_USE, ERROR_MAX_CAMERAS_IN_USE -> R.string.err_in_use; ERROR_CAMERA_DISABLED -> R.string.err_disabled; else -> R.string.err_open }) }
+                    }
+                })
+            } catch (e: android.hardware.camera2.CameraAccessException) {
+                state.update { it.copy(error = if (e.reason == android.hardware.camera2.CameraAccessException.CAMERA_DISABLED) R.string.err_disabled else R.string.err_open) }
+            } catch (_: Exception) {
+                state.update { it.copy(error = R.string.err_open) }
+            }
+        }
+    }
+
+    /** A preview size with the shape of what is saved, no larger than about 1080p. */
+    private fun choosePreview(s: Setup): Size {
+        val target = if (s.mode == Mode.VIDEO) s.videoSize ?: Size(1920, 1080) else s.lens.pixelArray ?: Size(4, 3)
+        val ratio = target.width.toFloat() / target.height
+        val sizes = s.lens.previewSizes.filter { it.width <= 1920 && it.height <= 1440 }
+        return sizes.filter { abs(it.width.toFloat() / it.height - ratio) < 0.02f }.maxByOrNull { it.width * it.height }
+            ?: sizes.maxByOrNull { it.width * it.height }
+            ?: Size(1440, 1080)
+    }
+
+    private fun createSession(s: Setup) {
+        val d = device ?: return
+        val preview = previewSurface ?: return
+        val phys = s.lens.physicalId
+        fun cfg(surface: Surface, maxRes: Boolean = false) = OutputConfiguration(surface).apply {
+            if (phys != null) setPhysicalCameraId(phys)
+            if (maxRes) addSensorPixelModeUsed(CameraMetadata.SENSOR_PIXEL_MODE_MAXIMUM_RESOLUTION)
+        }
+        val outs = arrayListOf(cfg(preview))
+        maxResActive = false
+        var saving = ""
+        if (s.mode == Mode.PHOTO) {
+            val wantRaw = s.format != PhotoFormat.JPEG && s.raw != null
+            val wantJpeg = s.format != PhotoFormat.RAW || s.raw == null
+            if (s.maxRes && s.lens.supportsMaxRes) {
+                // Maximum resolution: one full-size file per shot (Android doesn't guarantee RAW and JPEG together here).
+                val rawSize = s.raw?.let { s.lens.maxResRaws[it] }
+                if (wantRaw && rawSize != null) {
+                    rawReader = reader(rawSize, s.raw!!.format, raw = true).also { outs += cfg(it.surface, maxRes = true) }
+                    saving = "${s.raw!!.name} · ${mp(rawSize)}"
+                } else if (s.lens.maxResJpeg != null) {
+                    jpegReader = reader(s.lens.maxResJpeg, android.graphics.ImageFormat.JPEG, raw = false).also { outs += cfg(it.surface, maxRes = true) }
+                    saving = "JPEG · ${mp(s.lens.maxResJpeg)}"
+                }
+                maxResActive = rawReader != null || jpegReader != null
+            }
+            if (!maxResActive) {
+                val rawSize = s.raw?.let { s.lens.raws[it] }
+                if (wantRaw && rawSize != null) {
+                    rawReader = reader(rawSize, s.raw!!.format, raw = true).also { outs += cfg(it.surface) }
+                    saving = "${s.raw!!.name} · ${mp(rawSize)}"
+                }
+                if ((wantJpeg || rawReader == null) && s.lens.jpeg != null) {
+                    jpegReader = reader(s.lens.jpeg, android.graphics.ImageFormat.JPEG, raw = false).also { outs += cfg(it.surface) }
+                    saving = if (saving.isEmpty()) "JPEG · ${mp(s.lens.jpeg)}" else "$saving + JPEG"
+                }
+            }
+        } else {
+            val size = s.videoSize ?: Size(1920, 1080)
+            val surface = persistent ?: MediaCodec.createPersistentInputSurface().also { persistent = it }
+            // The persistent surface takes its buffer size from a prepared recorder before the session uses it.
+            runCatching {
+                val tmp = File(context.cacheDir, "prepare.mp4")
+                newRecorder(size, s.hevc, null, tmp, 0, audio = false).apply { prepare(); release() }
+                tmp.delete()
+            }
+            outs += cfg(surface)
+            saving = "${if (s.hevc) "HEVC" else "H.264"} · ${size.width}×${size.height}"
+        }
+        state.update { it.copy(saving = saving) }
+        try {
+            d.createCaptureSession(SessionConfiguration(SessionConfiguration.SESSION_REGULAR, outs, executor, object : CameraCaptureSession.StateCallback() {
+                override fun onConfigured(sess: CameraCaptureSession) {
+                    if (device != d) { sess.close(); return }
+                    session = sess
+                    startRepeating()
+                    state.update { it.copy(ready = true) }
+                }
+
+                override fun onConfigureFailed(sess: CameraCaptureSession) {
+                    state.update { it.copy(ready = false, error = R.string.err_config) }
+                }
+            }))
+        } catch (_: Exception) {
+            state.update { it.copy(ready = false, error = R.string.err_config) }
+        }
+    }
+
+    private fun reader(size: Size, format: Int, raw: Boolean): ImageReader =
+        ImageReader.newInstance(size.width, size.height, format, 2).apply {
+            setOnImageAvailableListener({ r ->
+                val img = runCatching { r.acquireNextImage() }.getOrNull() ?: return@setOnImageAvailableListener
+                val p = pending
+                val taken = p != null && (if (raw) p.raw else p.jpeg).complete(img)
+                if (!taken) img.close()
+            }, handler)
+        }
+
+    // ---------- Requests ----------
+
+    private fun startRepeating() {
+        val sess = session ?: return
+        val d = device ?: return
+        val s = setup ?: return
+        val preview = previewSurface ?: return
+        runCatching {
+            val recording = recorder != null
+            val b = d.createCaptureRequest(if (recording) CameraDevice.TEMPLATE_RECORD else CameraDevice.TEMPLATE_PREVIEW)
+            b.addTarget(preview)
+            if (recording) persistent?.let(b::addTarget)
+            apply(b, s)
+            sess.setRepeatingRequest(b.build(), null, handler)
+        }
+    }
+
+    private fun apply(b: CaptureRequest.Builder, s: Setup) {
+        val m = manual
+        b.set(CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_AUTO)
+        if (m.auto || !s.lens.manualSensor) {
+            b.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_ON)
+            s.lens.evRange?.let { b.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, m.ev.coerceIn(it.lower, it.upper)) }
+        } else {
+            b.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_OFF)
+            s.lens.iso?.let { b.set(CaptureRequest.SENSOR_SENSITIVITY, m.iso.coerceIn(it.lower, it.upper)) }
+            s.lens.exposureNs?.let { b.set(CaptureRequest.SENSOR_EXPOSURE_TIME, m.exposureNs.coerceIn(it.lower, it.upper)) }
+        }
+        if (!s.lens.hasAf) {
+            b.set(CaptureRequest.CONTROL_AF_MODE, CameraMetadata.CONTROL_AF_MODE_OFF)
+        } else if (m.focus != null) {
+            b.set(CaptureRequest.CONTROL_AF_MODE, CameraMetadata.CONTROL_AF_MODE_OFF)
+            b.set(CaptureRequest.LENS_FOCUS_DISTANCE, m.focus.coerceIn(0f, s.lens.minFocus))
+        } else if (regions != null) {
+            b.set(CaptureRequest.CONTROL_AF_MODE, CameraMetadata.CONTROL_AF_MODE_AUTO)
+            b.set(CaptureRequest.CONTROL_AF_REGIONS, regions)
+            b.set(CaptureRequest.CONTROL_AE_REGIONS, regions)
+        } else {
+            b.set(CaptureRequest.CONTROL_AF_MODE, if (s.mode == Mode.VIDEO) CameraMetadata.CONTROL_AF_MODE_CONTINUOUS_VIDEO else CameraMetadata.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
+        }
+        if (m.awb in s.lens.awbModes) b.set(CaptureRequest.CONTROL_AWB_MODE, m.awb)
+        if (s.lens.flash) b.set(CaptureRequest.FLASH_MODE, if (m.torch) CameraMetadata.FLASH_MODE_TORCH else CameraMetadata.FLASH_MODE_OFF)
+        s.lens.zoom?.let { b.set(CaptureRequest.CONTROL_ZOOM_RATIO, m.zoom.coerceIn(it.lower, it.upper)) }
+    }
+
+    fun setManual(m: Manual) {
+        handler.post {
+            manual = m
+            if (m.focus != null) regions = null
+            startRepeating()
+        }
+    }
+
+    /** Tap to focus and meter at a point of the preview (0..1 in the preview's portrait coordinates). */
+    fun focusAt(nx: Float, ny: Float) {
+        handler.post {
+            val s = setup ?: return@post
+            val sess = session ?: return@post
+            val d = device ?: return@post
+            val area = s.lens.activeArray ?: return@post
+            if (!s.lens.hasAf || manual.focus != null || pending != null) return@post
+            var x = nx.coerceIn(0f, 1f)
+            val y = ny.coerceIn(0f, 1f)
+            if (s.lens.facing == CameraMetadata.LENS_FACING_FRONT) x = 1f - x
+            val (sx, sy) = when (s.lens.sensorOrientation) {
+                90 -> y to 1f - x
+                180 -> 1f - x to 1f - y
+                270 -> 1f - y to x
+                else -> x to y
+            }
+            val half = (min(area.width(), area.height()) * 0.07f).toInt()
+            val cx = (area.left + sx * area.width()).toInt().coerceIn(area.left + half, area.right - half)
+            val cy = (area.top + sy * area.height()).toInt().coerceIn(area.top + half, area.bottom - half)
+            regions = arrayOf(MeteringRectangle(Rect(cx - half, cy - half, cx + half, cy + half), MeteringRectangle.METERING_WEIGHT_MAX))
+            runCatching {
+                val preview = previewSurface ?: return@post
+                sess.stopRepeating()
+                val cancel = d.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW).apply {
+                    addTarget(preview); apply(this, s); set(CaptureRequest.CONTROL_AF_TRIGGER, CameraMetadata.CONTROL_AF_TRIGGER_CANCEL)
+                }
+                sess.capture(cancel.build(), null, handler)
+                val trigger = d.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW).apply {
+                    addTarget(preview); apply(this, s); set(CaptureRequest.CONTROL_AF_TRIGGER, CameraMetadata.CONTROL_AF_TRIGGER_START)
+                }
+                sess.capture(trigger.build(), null, handler)
+            }
+            startRepeating()
+        }
+    }
+
+    /** Back to continuous autofocus (after the scene changes, or on a long-press). */
+    fun resetFocus() {
+        handler.post { regions = null; startRepeating() }
+    }
+
+    // ---------- Photos ----------
+
+    fun capture() {
+        handler.post {
+            val s = setup ?: return@post
+            val sess = session ?: return@post
+            val d = device ?: return@post
+            if (s.mode != Mode.PHOTO || pending != null) return@post
+            val jpeg = jpegReader
+            val raw = rawReader
+            if (jpeg == null && raw == null) return@post
+            val p = Pending(wantJpeg = jpeg != null, wantRaw = raw != null)
+            pending = p
+            state.update { it.copy(busy = true) }
+            val orient = jpegOrientation(s.lens)
+            try {
+                val b = d.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE)
+                jpeg?.let { b.addTarget(it.surface) }
+                raw?.let { b.addTarget(it.surface) }
+                apply(b, s)
+                b.set(CaptureRequest.JPEG_ORIENTATION, orient)
+                b.set(CaptureRequest.JPEG_QUALITY, s.jpegQuality.toByte())
+                if (raw != null) b.set(CaptureRequest.STATISTICS_LENS_SHADING_MAP_MODE, CameraMetadata.STATISTICS_LENS_SHADING_MAP_MODE_ON)
+                if (maxResActive) b.set(CaptureRequest.SENSOR_PIXEL_MODE, CameraMetadata.SENSOR_PIXEL_MODE_MAXIMUM_RESOLUTION)
+                if (shutterSound) sound.play(MediaActionSound.SHUTTER_CLICK)
+                sess.capture(b.build(), object : CameraCaptureSession.CaptureCallback() {
+                    override fun onCaptureCompleted(session: CameraCaptureSession, request: CaptureRequest, result: TotalCaptureResult) {
+                        p.result.complete(result)
+                    }
+
+                    override fun onCaptureFailed(session: CameraCaptureSession, request: CaptureRequest, failure: CaptureFailure) {
+                        p.result.completeExceptionally(IllegalStateException("capture failed"))
+                    }
+                }, handler)
+            } catch (e: Exception) {
+                p.result.completeExceptionally(e)
+            }
+            io.launch { save(p, s, orient) }
+        }
+    }
+
+    private suspend fun save(p: Pending, s: Setup, orient: Int) {
+        var uri: Uri? = null
+        var failed = false
+        var rawUsed = false
+        var jpegUsed = false
+        try {
+            val result = withTimeout(TIMEOUT) { p.result.await() }
+            val name = "CTRL_" + SimpleDateFormat("yyyyMMdd_HHmmss_SSS", Locale.US).format(Date())
+            if (p.wantRaw) {
+                val img = withTimeout(TIMEOUT) { p.raw.await() }.also { rawUsed = true }
+                img.use { uri = Saver.saveRaw(context, it, s.lens, result, orient, name) }
+                if (uri == null) failed = true
+            }
+            if (p.wantJpeg) {
+                val img = withTimeout(TIMEOUT) { p.jpeg.await() }.also { jpegUsed = true }
+                img.use { i -> Saver.saveJpeg(context, i, name)?.let { uri = it } ?: run { failed = true } }
+            }
+        } catch (_: Exception) {
+            failed = true
+        } finally {
+            // An image that arrived after a failure or timeout is closed, so the reader never runs out.
+            if (!rawUsed && !p.raw.completeExceptionally(IllegalStateException())) runCatching { p.raw.await().close() }
+            if (!jpegUsed && !p.jpeg.completeExceptionally(IllegalStateException())) runCatching { p.jpeg.await().close() }
+            handler.post { if (pending === p) pending = null }
+            state.update {
+                it.copy(busy = false, lastUri = uri ?: it.lastUri, lastIsVideo = if (uri != null) false else it.lastIsVideo, error = if (failed) R.string.err_capture else it.error)
+            }
+        }
+    }
+
+    private fun jpegOrientation(l: Lens): Int {
+        val dev = if (l.facing == CameraMetadata.LENS_FACING_FRONT) -orientation else orientation
+        return (l.sensorOrientation + dev + 360) % 360
+    }
+
+    // ---------- Video ----------
+
+    private fun newRecorder(size: Size, hevc: Boolean, fd: java.io.FileDescriptor?, file: File?, rotation: Int, audio: Boolean) =
+        MediaRecorder(context).apply {
+            if (audio) setAudioSource(MediaRecorder.AudioSource.CAMCORDER)
+            setVideoSource(MediaRecorder.VideoSource.SURFACE)
+            setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+            if (fd != null) setOutputFile(fd) else setOutputFile(file)
+            val uhd = size.width.toLong() * size.height >= 3840L * 2160
+            setVideoEncodingBitRate(if (uhd) 48_000_000 else 18_000_000)
+            setVideoFrameRate(30)
+            setVideoSize(size.width, size.height)
+            setVideoEncoder(if (hevc) MediaRecorder.VideoEncoder.HEVC else MediaRecorder.VideoEncoder.H264)
+            if (audio) {
+                setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+                setAudioSamplingRate(48_000)
+                setAudioEncodingBitRate(256_000)
+                setAudioChannels(2)
+            }
+            setOrientationHint(rotation)
+            persistent?.let { setInputSurface(it) }
+        }
+
+    fun toggleRecording() {
+        handler.post { if (recorder != null) stopRecordingInternal() else startRecordingInternal() }
+    }
+
+    private fun startRecordingInternal() {
+        val s = setup ?: return
+        if (s.mode != Mode.VIDEO || session == null || persistent == null) return
+        val size = s.videoSize ?: return
+        val name = "CTRL_" + SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
+        val uri = Saver.insert(context, "$name.mp4", "video/mp4", video = true)
+        if (uri == null) { state.update { it.copy(error = R.string.err_capture) }; return }
+        try {
+            val pfd = context.contentResolver.openFileDescriptor(uri, "w") ?: throw IllegalStateException()
+            val audio = context.hasPermission(Manifest.permission.RECORD_AUDIO)
+            val r = newRecorder(size, s.hevc, pfd.fileDescriptor, null, jpegOrientation(s.lens), audio)
+            r.prepare()
+            recorder = r
+            recordUri = uri
+            recordPfd = pfd
+            if (shutterSound) sound.play(MediaActionSound.START_VIDEO_RECORDING)
+            startRepeating()
+            r.start()
+            state.update { it.copy(recording = true, recordStart = SystemClock.elapsedRealtime()) }
+        } catch (_: Exception) {
+            cleanupRecorder(keep = false)
+            startRepeating()
+            state.update { it.copy(recording = false, error = R.string.err_capture) }
+        }
+    }
+
+    private fun stopRecordingInternal() {
+        val r = recorder ?: return
+        val ok = runCatching { r.stop() }.isSuccess
+        if (shutterSound) sound.play(MediaActionSound.STOP_VIDEO_RECORDING)
+        val uri = recordUri
+        cleanupRecorder(keep = ok)
+        startRepeating()
+        state.update { it.copy(recording = false, lastUri = if (ok) uri else it.lastUri, lastIsVideo = ok || it.lastIsVideo) }
+    }
+
+    private fun cleanupRecorder(keep: Boolean) {
+        runCatching { recorder?.release() }
+        recorder = null
+        runCatching { recordPfd?.close() }
+        recordPfd = null
+        recordUri?.let { if (keep) Saver.finish(context, it) else runCatching { context.contentResolver.delete(it, null, null) } }
+        recordUri = null
+    }
+
+    // ---------- Closing ----------
+
+    private fun closeInternal() {
+        if (recorder != null) stopRecordingInternal()
+        pending?.result?.completeExceptionally(IllegalStateException("closed"))
+        pending = null
+        runCatching { session?.close() }
+        session = null
+        runCatching { device?.close() }
+        device = null
+        runCatching { jpegReader?.close() }
+        jpegReader = null
+        runCatching { rawReader?.close() }
+        rawReader = null
+        runCatching { previewSurface?.release() }
+        previewSurface = null
+        regions = null
+        state.update { it.copy(ready = false, busy = false, recording = false) }
+    }
+
+    /** Closes the camera (leaving the screen, or the app going to the background). */
+    fun close() {
+        openToken++
+        handler.post { closeInternal() }
+    }
+
+    fun release() {
+        close()
+        handler.post {
+            runCatching { persistent?.release() }
+            persistent = null
+            sound.release()
+            thread.quitSafely()
+        }
+    }
+
+    companion object {
+        private const val TIMEOUT = 30_000L
+
+        fun mp(s: Size): String {
+            val mp = s.width.toLong() * s.height / 1_000_000.0
+            return if (mp >= 100) "%.0f MP".format(Locale.US, mp) else "%.1f MP".format(Locale.US, mp)
+        }
+    }
+}
