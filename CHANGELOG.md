@@ -4,6 +4,21 @@ What changed in each CameraCtrl release. Every release on the [Releases page](ht
 
 To publish a new version: bump `versionCode` and `versionName` in `app/build.gradle.kts`, add a section here, and push to `main`. Pushes without a version bump only build; they don't make a release.
 
+## v0.2.0 (2026-11-13)
+
+Three new modes in the row at the bottom of the viewfinder: Night, Interval and Scan.
+
+### New
+
+- **Night mode.** CameraCtrl takes a quick burst of photos at the same exposure, lines them up and merges them into one JPEG with much less noise. Choose **Handheld** (6 frames, short exposures) or **Tripod** (8 longer frames at a lower ISO). It's a multi-frame merge, not one long exposure: the viewfinder says so, shows each frame as it's taken, and the photo's EXIF "Software" field says how many frames were merged. Parts that moved between frames are taken from the first frame, so they don't leave ghosts. RAW isn't saved in night mode; it stays in Photo mode.
+- **Interval shooting and timelapses.** Take a photo every 1 second to 10 minutes, for 50 to 600 shots, 10 minutes to 4 hours, or until you stop. Keep every shot as a JPEG photo, or let CameraCtrl make a timelapse video from them (30 frames per second, HEVC or H.264, 4K or 1080p as set for video), built on the phone as the run goes. The run goes on with the screen dimmed or off: tap **Dim screen** to turn the screen black, and the camera keeps working in a foreground service with a Stop button in its notification. Shots that can't keep up with a short interval are skipped rather than taken in a hurry.
+- **QR code and barcode scanner.** Point the camera at a QR code, Data Matrix, Aztec, PDF417 or a common barcode (EAN, UPC, Code 128, Code 39 and others). CameraCtrl shows what it says, with **Copy** and **Share**. A link is shown in full and only opens in your browser when you tap **Open link**; other kinds of links (apps, files) are only shown as text. A Wi-Fi code shows the network and password, offers Android's own add-network screen (CameraCtrl needs no Wi-Fi permission for that) and **Copy password**.
+
+### Privacy
+
+- Still no internet and no location permission. Night merges, timelapse videos and code scanning all happen on the phone.
+- New install-time permissions, only used while an interval run you started is going: run a foreground service of the camera type. Without a run, nothing runs in the background and the camera closes when you leave the app.
+
 ## v0.1.1 (2026-11-13)
 
 A small security and housekeeping update. Nothing changes in how you take photos or videos.

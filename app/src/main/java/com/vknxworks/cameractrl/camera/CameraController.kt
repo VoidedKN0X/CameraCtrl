@@ -3,6 +3,7 @@ package com.vknxworks.cameractrl.camera
 import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
+import android.graphics.ImageFormat
 import android.graphics.Rect
 import android.graphics.SurfaceTexture
 import android.hardware.camera2.CameraCaptureSession
@@ -28,6 +29,11 @@ import android.os.SystemClock
 import android.util.Size
 import android.view.Surface
 import com.vknxworks.cameractrl.R
+import com.vknxworks.cameractrl.night.NightExposure
+import com.vknxworks.cameractrl.night.NightJob
+import com.vknxworks.cameractrl.night.NightPreset
+import com.vknxworks.cameractrl.scan.Decoder
+import com.vknxworks.cameractrl.scan.Scanned
 import com.vknxworks.cameractrl.ui.common.hasPermission
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -37,16 +43,23 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.concurrent.Executor
+import java.util.concurrent.Executors
 import kotlin.math.abs
 import kotlin.math.min
 
 enum class PhotoFormat { JPEG, RAW_JPEG, RAW }
-enum class Mode { PHOTO, VIDEO }
+
+/**
+ * What the session is set up for. NIGHT: preview plus a full-size YUV stream for the burst. SCAN: preview
+ * plus a small YUV stream for the code reader. INTERVAL: JPEG only (the run itself is in IntervalRunner).
+ */
+enum class Mode { PHOTO, NIGHT, VIDEO, INTERVAL, SCAN }
 
 /** Exposure, focus, white balance, torch and zoom. [auto] off means ISO and shutter are set by hand. */
 data class Manual(
@@ -83,11 +96,25 @@ data class CamState(
     val lastIsVideo: Boolean = false,
     /** What the open session actually saves (for the status line). */
     val saving: String = "",
+    /** Night mode: frames of the burst received so far, out of [nightTotal] (0 when no burst is running). */
+    val nightFrames: Int = 0,
+    val nightTotal: Int = 0,
+    /** Night mode: how many frames went into the last merged photo. */
+    val lastNightMerged: Int = 0,
+    /** Scan mode: the code that was found (scanning pauses until [CameraController.resumeScan]). */
+    val scanned: Scanned? = null,
 )
+
+/** One interval shot: where it was saved (null when it wasn't), and the JPEG itself. */
+class Shot(val uri: Uri?, val jpeg: ByteArray)
 
 /**
  * Camera2 on its own thread. Photos: JPEG, RAW (DNG) or both, in the lens's normal mode or, where Android
- * offers it, its maximum-resolution mode. Video: MediaRecorder on a persistent surface.
+ * offers it, its maximum-resolution mode. Night: a burst of YUV frames merged into one JPEG. Scan: QR codes
+ * and barcodes from a small YUV stream. Video: MediaRecorder on a persistent surface.
+ *
+ * Without a preview texture (an interval run in the foreground service) a small YUV stream stands in for
+ * the preview, so auto exposure and focus keep running between shots.
  */
 class CameraController(private val context: Context) {
     private val cm = context.getSystemService(CameraManager::class.java)
@@ -100,14 +127,29 @@ class CameraController(private val context: Context) {
     private var device: CameraDevice? = null
     private var session: CameraCaptureSession? = null
     private var previewSurface: Surface? = null
+    /** Stands in for the preview when there is no screen (interval runs). */
+    private var meterReader: ImageReader? = null
     private var jpegReader: ImageReader? = null
     private var rawReader: ImageReader? = null
+    /** Night: full-size frames for the merge. Scan: small frames for the code reader. */
+    private var yuvReader: ImageReader? = null
     private var maxResActive = false
     private var setup: Setup? = null
     private var manual = Manual()
     private var regions: Array<MeteringRectangle>? = null
     private var pending: Pending? = null
     private var openToken = 0
+
+    /** What auto exposure chose for the last preview frame (night mode starts from it). */
+    @Volatile private var lastAeNs = 0L
+    @Volatile private var lastAeIso = 0
+
+    private var night: NightJob? = null
+
+    private val scanExecutor = Executors.newSingleThreadExecutor { r -> Thread(r, "CameraCtrl-scan") }
+    private val decoder = Decoder()
+    @Volatile private var scanBusy = false
+    @Volatile private var scanPaused = false
 
     private var persistent: Surface? = null
     private var recorder: MediaRecorder? = null
@@ -119,7 +161,7 @@ class CameraController(private val context: Context) {
     @Volatile var shutterSound = true
     private val sound = MediaActionSound()
 
-    private class Pending(val wantJpeg: Boolean, val wantRaw: Boolean) {
+    private class Pending(val wantJpeg: Boolean, val wantRaw: Boolean, val saveJpeg: Boolean, val onShot: ((Shot?) -> Unit)?) {
         val result = CompletableDeferred<TotalCaptureResult>()
         val jpeg = CompletableDeferred<Image>()
         val raw = CompletableDeferred<Image>()
@@ -127,16 +169,25 @@ class CameraController(private val context: Context) {
 
     // ---------- Opening ----------
 
+    /** Opens [s]. With no [texture] the camera runs without a preview (interval runs). */
     @SuppressLint("MissingPermission")
-    fun open(s: Setup, texture: SurfaceTexture) {
+    fun open(s: Setup, texture: SurfaceTexture?) {
         val token = ++openToken
         handler.post {
             if (token != openToken) return@post
             closeInternal()
             setup = s
-            val preview = choosePreview(s)
-            texture.setDefaultBufferSize(preview.width, preview.height)
-            previewSurface = Surface(texture)
+            if (texture != null) {
+                val preview = choosePreview(s)
+                texture.setDefaultBufferSize(preview.width, preview.height)
+                previewSurface = Surface(texture)
+            } else {
+                val size = chooseYuv(s.lens, 640, 640L * 480)
+                meterReader = ImageReader.newInstance(size.width, size.height, ImageFormat.YUV_420_888, 2).apply {
+                    setOnImageAvailableListener({ r -> runCatching { r.acquireLatestImage() }.getOrNull()?.close() }, handler)
+                }
+                previewSurface = meterReader!!.surface
+            }
             state.update { it.copy(ready = false, error = null) }
             try {
                 cm.openCamera(s.lens.id, executor, object : CameraDevice.StateCallback() {
@@ -176,6 +227,16 @@ class CameraController(private val context: Context) {
             ?: Size(1440, 1080)
     }
 
+    /** The largest YUV size with the sensor's shape, at most [maxWidth] wide and [maxPixels] in all. */
+    private fun chooseYuv(lens: Lens, maxWidth: Int, maxPixels: Long): Size {
+        val ratio = lens.pixelArray?.let { it.width.toFloat() / it.height } ?: (4f / 3f)
+        val fits = lens.yuvSizes.filter { it.width <= maxWidth && it.width.toLong() * it.height <= maxPixels && it.width % 2 == 0 && it.height % 2 == 0 }
+        return fits.filter { abs(it.width.toFloat() / it.height - ratio) < 0.02f }.maxByOrNull { it.width.toLong() * it.height }
+            ?: fits.maxByOrNull { it.width.toLong() * it.height }
+            ?: lens.yuvSizes.minByOrNull { it.width.toLong() * it.height }
+            ?: Size(640, 480)
+    }
+
     private fun createSession(s: Setup) {
         val d = device ?: return
         val preview = previewSurface ?: return
@@ -187,44 +248,62 @@ class CameraController(private val context: Context) {
         val outs = arrayListOf(cfg(preview))
         maxResActive = false
         var saving = ""
-        if (s.mode == Mode.PHOTO) {
-            val wantRaw = s.format != PhotoFormat.JPEG && s.raw != null
-            val wantJpeg = s.format != PhotoFormat.RAW || s.raw == null
-            if (s.maxRes && s.lens.supportsMaxRes) {
-                // Maximum resolution: one full-size file per shot (Android doesn't guarantee RAW and JPEG together here).
-                val rawSize = s.raw?.let { s.lens.maxResRaws[it] }
-                if (wantRaw && rawSize != null) {
-                    rawReader = reader(rawSize, s.raw!!.format, raw = true).also { outs += cfg(it.surface, maxRes = true) }
-                    saving = "${s.raw!!.name} · ${mp(rawSize)}"
-                } else if (s.lens.maxResJpeg != null) {
-                    jpegReader = reader(s.lens.maxResJpeg, android.graphics.ImageFormat.JPEG, raw = false).also { outs += cfg(it.surface, maxRes = true) }
-                    saving = "JPEG · ${mp(s.lens.maxResJpeg)}"
+        when (s.mode) {
+            Mode.PHOTO, Mode.INTERVAL -> {
+                val wantRaw = s.format != PhotoFormat.JPEG && s.raw != null
+                val wantJpeg = s.format != PhotoFormat.RAW || s.raw == null
+                if (s.maxRes && s.lens.supportsMaxRes) {
+                    // Maximum resolution: one full-size file per shot (Android doesn't guarantee RAW and JPEG together here).
+                    val rawSize = s.raw?.let { s.lens.maxResRaws[it] }
+                    if (wantRaw && rawSize != null) {
+                        rawReader = reader(rawSize, s.raw!!.format, raw = true).also { outs += cfg(it.surface, maxRes = true) }
+                        saving = "${s.raw!!.name} · ${mp(rawSize)}"
+                    } else if (s.lens.maxResJpeg != null) {
+                        jpegReader = reader(s.lens.maxResJpeg, ImageFormat.JPEG, raw = false).also { outs += cfg(it.surface, maxRes = true) }
+                        saving = "JPEG · ${mp(s.lens.maxResJpeg)}"
+                    }
+                    maxResActive = rawReader != null || jpegReader != null
                 }
-                maxResActive = rawReader != null || jpegReader != null
-            }
-            if (!maxResActive) {
-                val rawSize = s.raw?.let { s.lens.raws[it] }
-                if (wantRaw && rawSize != null) {
-                    rawReader = reader(rawSize, s.raw!!.format, raw = true).also { outs += cfg(it.surface) }
-                    saving = "${s.raw!!.name} · ${mp(rawSize)}"
+                if (!maxResActive) {
+                    val rawSize = s.raw?.let { s.lens.raws[it] }
+                    if (wantRaw && rawSize != null) {
+                        rawReader = reader(rawSize, s.raw!!.format, raw = true).also { outs += cfg(it.surface) }
+                        saving = "${s.raw!!.name} · ${mp(rawSize)}"
+                    }
+                    if ((wantJpeg || rawReader == null) && s.lens.jpeg != null) {
+                        jpegReader = reader(s.lens.jpeg, ImageFormat.JPEG, raw = false).also { outs += cfg(it.surface) }
+                        saving = if (saving.isEmpty()) "JPEG · ${mp(s.lens.jpeg)}" else "$saving + JPEG"
+                    }
                 }
-                if ((wantJpeg || rawReader == null) && s.lens.jpeg != null) {
-                    jpegReader = reader(s.lens.jpeg, android.graphics.ImageFormat.JPEG, raw = false).also { outs += cfg(it.surface) }
-                    saving = if (saving.isEmpty()) "JPEG · ${mp(s.lens.jpeg)}" else "$saving + JPEG"
+            }
+            Mode.NIGHT -> {
+                // Full frames for the merge, at most about 13 MP so a few of them fit in memory.
+                val size = chooseYuv(s.lens, Int.MAX_VALUE, 13_000_000L)
+                yuvReader = ImageReader.newInstance(size.width, size.height, ImageFormat.YUV_420_888, NIGHT_IMAGES).apply {
+                    setOnImageAvailableListener({ drainNight() }, handler)
+                }.also { outs += cfg(it.surface) }
+                saving = "JPEG · ${mp(size)}"
+            }
+            Mode.SCAN -> {
+                // Preview-sized (at most 1440 × 1080), so preview plus this stream is a combination every camera supports.
+                val size = chooseYuv(s.lens, 1440, 1440L * 1080)
+                yuvReader = ImageReader.newInstance(size.width, size.height, ImageFormat.YUV_420_888, 2).apply {
+                    setOnImageAvailableListener({ r -> onScanFrame(r) }, handler)
+                }.also { outs += cfg(it.surface) }
+            }
+            Mode.VIDEO -> {
+                val size = s.videoSize ?: Size(1920, 1080)
+                val surface = persistent ?: MediaCodec.createPersistentInputSurface().also { persistent = it }
+                // The persistent surface takes its buffer size from a prepared recorder before the session uses it.
+                val tmp = File(context.cacheDir, "prepare.mp4")
+                try {
+                    runCatching { newRecorder(size, s.hevc, null, tmp, 0, audio = false).apply { prepare(); release() } }
+                } finally {
+                    tmp.delete()
                 }
+                outs += cfg(surface)
+                saving = "${if (s.hevc) "HEVC" else "H.264"} · ${size.width}×${size.height}"
             }
-        } else {
-            val size = s.videoSize ?: Size(1920, 1080)
-            val surface = persistent ?: MediaCodec.createPersistentInputSurface().also { persistent = it }
-            // The persistent surface takes its buffer size from a prepared recorder before the session uses it.
-            val tmp = File(context.cacheDir, "prepare.mp4")
-            try {
-                runCatching { newRecorder(size, s.hevc, null, tmp, 0, audio = false).apply { prepare(); release() } }
-            } finally {
-                tmp.delete()
-            }
-            outs += cfg(surface)
-            saving = "${if (s.hevc) "HEVC" else "H.264"} · ${size.width}×${size.height}"
         }
         state.update { it.copy(saving = saving) }
         try {
@@ -257,6 +336,13 @@ class CameraController(private val context: Context) {
 
     // ---------- Requests ----------
 
+    private val aeWatcher = object : CameraCaptureSession.CaptureCallback() {
+        override fun onCaptureCompleted(session: CameraCaptureSession, request: CaptureRequest, result: TotalCaptureResult) {
+            result.get(android.hardware.camera2.CaptureResult.SENSOR_EXPOSURE_TIME)?.let { lastAeNs = it }
+            result.get(android.hardware.camera2.CaptureResult.SENSOR_SENSITIVITY)?.let { lastAeIso = it }
+        }
+    }
+
     private fun startRepeating() {
         val sess = session ?: return
         val d = device ?: return
@@ -267,15 +353,16 @@ class CameraController(private val context: Context) {
             val b = d.createCaptureRequest(if (recording) CameraDevice.TEMPLATE_RECORD else CameraDevice.TEMPLATE_PREVIEW)
             b.addTarget(preview)
             if (recording) persistent?.let(b::addTarget)
+            if (s.mode == Mode.SCAN) yuvReader?.let { b.addTarget(it.surface) }
             apply(b, s)
-            sess.setRepeatingRequest(b.build(), null, handler)
+            sess.setRepeatingRequest(b.build(), aeWatcher, handler)
         }
     }
 
     private fun apply(b: CaptureRequest.Builder, s: Setup) {
         val m = manual
         b.set(CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_AUTO)
-        if (m.auto || !s.lens.manualSensor) {
+        if (m.auto || !s.lens.manualSensor || s.mode == Mode.SCAN) {
             b.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_ON)
             s.lens.evRange?.let { b.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, m.ev.coerceIn(it.lower, it.upper)) }
         } else {
@@ -285,7 +372,7 @@ class CameraController(private val context: Context) {
         }
         if (!s.lens.hasAf) {
             b.set(CaptureRequest.CONTROL_AF_MODE, CameraMetadata.CONTROL_AF_MODE_OFF)
-        } else if (m.focus != null) {
+        } else if (m.focus != null && s.mode != Mode.SCAN) {
             b.set(CaptureRequest.CONTROL_AF_MODE, CameraMetadata.CONTROL_AF_MODE_OFF)
             b.set(CaptureRequest.LENS_FOCUS_DISTANCE, m.focus.coerceIn(0f, s.lens.minFocus))
         } else if (regions != null) {
@@ -315,7 +402,7 @@ class CameraController(private val context: Context) {
             val sess = session ?: return@post
             val d = device ?: return@post
             val area = s.lens.activeArray ?: return@post
-            if (!s.lens.hasAf || manual.focus != null || pending != null) return@post
+            if (!s.lens.hasAf || manual.focus != null || pending != null || night != null) return@post
             var x = nx.coerceIn(0f, 1f)
             val y = ny.coerceIn(0f, 1f)
             if (s.lens.facing == CameraMetadata.LENS_FACING_FRONT) x = 1f - x
@@ -352,16 +439,34 @@ class CameraController(private val context: Context) {
 
     // ---------- Photos ----------
 
-    fun capture() {
+    fun capture() = capture(saveJpeg = true, onShot = null)
+
+    /**
+     * Takes one JPEG for an interval run. [save] puts it in the library; the JPEG bytes always come back
+     * (for the thumbnail, and as a frame of a timelapse video). Null when the shot failed.
+     */
+    suspend fun captureShot(save: Boolean): Shot? {
+        val done = CompletableDeferred<Shot?>()
+        capture(saveJpeg = save) { done.complete(it) }
+        return withTimeoutOrNull(TIMEOUT + 5_000) { done.await() }
+    }
+
+    private fun capture(saveJpeg: Boolean, onShot: ((Shot?) -> Unit)?) {
         handler.post {
-            val s = setup ?: return@post
-            val sess = session ?: return@post
-            val d = device ?: return@post
-            if (s.mode != Mode.PHOTO || pending != null) return@post
+            val s = setup
+            val sess = session
+            val d = device
+            if (s == null || sess == null || d == null || (s.mode != Mode.PHOTO && s.mode != Mode.INTERVAL) || pending != null) {
+                onShot?.invoke(null)
+                return@post
+            }
             val jpeg = jpegReader
-            val raw = rawReader
-            if (jpeg == null && raw == null) return@post
-            val p = Pending(wantJpeg = jpeg != null, wantRaw = raw != null)
+            val raw = if (onShot != null) null else rawReader
+            if (jpeg == null && raw == null || (onShot != null && jpeg == null)) {
+                onShot?.invoke(null)
+                return@post
+            }
+            val p = Pending(wantJpeg = jpeg != null, wantRaw = raw != null, saveJpeg = saveJpeg, onShot = onShot)
             pending = p
             state.update { it.copy(busy = true) }
             val orient = jpegOrientation(s.lens)
@@ -396,9 +501,10 @@ class CameraController(private val context: Context) {
         var failed = false
         var rawUsed = false
         var jpegUsed = false
+        var bytes: ByteArray? = null
         try {
             val result = withTimeout(TIMEOUT) { p.result.await() }
-            val name = "CTRL_" + SimpleDateFormat("yyyyMMdd_HHmmss_SSS", Locale.US).format(Date())
+            val name = newName()
             if (p.wantRaw) {
                 val img = withTimeout(TIMEOUT) { p.raw.await() }.also { rawUsed = true }
                 img.use { uri = Saver.saveRaw(context, it, s.lens, result, orient, name) }
@@ -406,7 +512,9 @@ class CameraController(private val context: Context) {
             }
             if (p.wantJpeg) {
                 val img = withTimeout(TIMEOUT) { p.jpeg.await() }.also { jpegUsed = true }
-                img.use { i -> Saver.saveJpeg(context, i, name)?.let { uri = it } ?: run { failed = true } }
+                val b = img.use { Saver.jpegBytes(it) }
+                bytes = b
+                if (p.saveJpeg) Saver.saveJpegBytes(context, b, name)?.let { uri = it } ?: run { failed = true }
             }
         } catch (_: Exception) {
             failed = true
@@ -418,12 +526,138 @@ class CameraController(private val context: Context) {
             state.update {
                 it.copy(busy = false, lastUri = uri ?: it.lastUri, lastIsVideo = if (uri != null) false else it.lastIsVideo, error = if (failed) R.string.err_capture else it.error)
             }
+            p.onShot?.invoke(if (failed) null else bytes?.let { Shot(uri, it) })
         }
     }
 
     private fun jpegOrientation(l: Lens): Int {
         val dev = if (l.facing == CameraMetadata.LENS_FACING_FRONT) -orientation else orientation
         return (l.sensorOrientation + dev + 360) % 360
+    }
+
+    // ---------- Night ----------
+
+    /**
+     * Night mode: a burst of [NightPreset.frames] frames at the same exposure, aligned and merged into one JPEG
+     * with less noise. Exposure starts from what auto exposure chose (or the manual settings, when set).
+     */
+    fun captureNight(preset: NightPreset) {
+        handler.post {
+            val s = setup ?: return@post
+            val sess = session ?: return@post
+            val d = device ?: return@post
+            val reader = yuvReader ?: return@post
+            if (s.mode != Mode.NIGHT || night != null || pending != null) return@post
+            val n = preset.frames
+            val m = manual
+            val lens = s.lens
+            val isoRange = lens.iso
+            val nsRange = lens.exposureNs
+            // Manual settings win; otherwise auto exposure's choice is spread for the preset, where the lens allows.
+            val planned: Pair<Long, Int>? =
+                if (m.auto && lens.manualSensor && isoRange != null && nsRange != null && lastAeNs > 0 && lastAeIso > 0) {
+                    NightExposure.plan(lastAeNs, lastAeIso, isoRange.lower, isoRange.upper, nsRange.lower, nsRange.upper, preset)
+                } else null
+            val frameNs = planned?.first ?: if (!m.auto && lens.manualSensor) m.exposureNs else lastAeNs
+            var self: NightJob? = null
+            val job = NightJob(
+                context, preset, n, jpegOrientation(lens), s.jpegQuality, newName() + "_NIGHT",
+                onImageClosed = { handler.post { drainNight() } },
+                onProgress = { k -> state.update { it.copy(nightFrames = k) } },
+                onDone = { uri, merged ->
+                    handler.post { if (night === self) night = null }
+                    state.update {
+                        it.copy(
+                            busy = false, nightFrames = 0, nightTotal = 0, lastNightMerged = if (uri != null) merged else it.lastNightMerged,
+                            lastUri = uri ?: it.lastUri, lastIsVideo = if (uri != null) false else it.lastIsVideo,
+                            error = if (uri == null) R.string.err_capture else it.error,
+                        )
+                    }
+                },
+            )
+            self = job
+            night = job
+            state.update { it.copy(busy = true, nightFrames = 0, nightTotal = n) }
+            try {
+                val requests = (0 until n).map {
+                    d.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE).apply {
+                        addTarget(reader.surface)
+                        apply(this, s)
+                        if (planned != null) {
+                            set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_OFF)
+                            set(CaptureRequest.SENSOR_EXPOSURE_TIME, planned.first)
+                            set(CaptureRequest.SENSOR_SENSITIVITY, planned.second)
+                        } else if (m.auto || !lens.manualSensor) {
+                            set(CaptureRequest.CONTROL_AE_LOCK, true)
+                        }
+                        set(CaptureRequest.CONTROL_AWB_LOCK, true)
+                        set(CaptureRequest.NOISE_REDUCTION_MODE, CameraMetadata.NOISE_REDUCTION_MODE_HIGH_QUALITY)
+                    }.build()
+                }
+                if (shutterSound) sound.play(MediaActionSound.SHUTTER_CLICK)
+                sess.captureBurst(requests, object : CameraCaptureSession.CaptureCallback() {
+                    override fun onCaptureFailed(session: CameraCaptureSession, request: CaptureRequest, failure: CaptureFailure) {
+                        job.frameFailed()
+                    }
+                }, handler)
+            } catch (_: Exception) {
+                job.finishNow()
+                return@post
+            }
+            // If frames go missing, whatever arrived is merged and saved after a generous wait.
+            val waitMs = n * (frameNs.coerceAtLeast(0L) / 1_000_000L) + 20_000L
+            handler.postDelayed({ if (night === job) job.finishNow() }, waitMs)
+        }
+    }
+
+    /**
+     * Hands every waiting burst frame to the night job. A frame can't be taken while [NIGHT_IMAGES] are still
+     * being worked on, so this runs again each time the job lets one go.
+     */
+    private fun drainNight() {
+        val r = yuvReader ?: return
+        while (true) {
+            val img = runCatching { r.acquireNextImage() }.getOrNull() ?: return
+            val job = night
+            if (job != null) job.offer(img) else img.close()
+        }
+    }
+
+    // ---------- Scan ----------
+
+    private fun onScanFrame(r: ImageReader) {
+        val img = runCatching { r.acquireLatestImage() }.getOrNull() ?: return
+        if (scanBusy || scanPaused) { img.close(); return }
+        val w = img.width
+        val h = img.height
+        val luma = ByteArray(w * h)
+        try {
+            val plane = img.planes[0]
+            val buf = plane.buffer
+            for (row in 0 until h) {
+                buf.position(row * plane.rowStride)
+                buf.get(luma, row * w, w)
+            }
+        } catch (_: Exception) {
+            return
+        } finally {
+            img.close()
+        }
+        scanBusy = true
+        scanExecutor.execute {
+            val found = runCatching { decoder.decode(luma, w, h) }.getOrNull()
+            if (found != null && !scanPaused) {
+                scanPaused = true
+                state.update { it.copy(scanned = found) }
+            }
+            scanBusy = false
+        }
+    }
+
+    /** Clears the shown code and looks for the next one. */
+    fun resumeScan() {
+        state.update { it.copy(scanned = null) }
+        scanPaused = false
     }
 
     // ---------- Video ----------
@@ -504,6 +738,9 @@ class CameraController(private val context: Context) {
         if (recorder != null) stopRecordingInternal()
         pending?.result?.completeExceptionally(IllegalStateException("closed"))
         pending = null
+        // A night burst cut short still saves the frames that arrived.
+        night?.finishNow()
+        night = null
         runCatching { session?.close() }
         session = null
         runCatching { device?.close() }
@@ -512,10 +749,20 @@ class CameraController(private val context: Context) {
         jpegReader = null
         runCatching { rawReader?.close() }
         rawReader = null
-        runCatching { previewSurface?.release() }
+        runCatching { yuvReader?.close() }
+        yuvReader = null
+        if (meterReader != null) {
+            runCatching { meterReader?.close() }
+            meterReader = null
+        } else {
+            runCatching { previewSurface?.release() }
+        }
         previewSurface = null
         regions = null
-        state.update { it.copy(ready = false, busy = false, recording = false) }
+        lastAeNs = 0L
+        lastAeIso = 0
+        state.update { it.copy(ready = false, busy = false, recording = false, scanned = null) }
+        scanPaused = false
     }
 
     /** Closes the camera (leaving the screen, or the app going to the background). */
@@ -530,12 +777,16 @@ class CameraController(private val context: Context) {
             runCatching { persistent?.release() }
             persistent = null
             sound.release()
+            scanExecutor.shutdown()
             thread.quitSafely()
         }
     }
 
+    private fun newName() = "CTRL_" + SimpleDateFormat("yyyyMMdd_HHmmss_SSS", Locale.US).format(Date())
+
     companion object {
         private const val TIMEOUT = 30_000L
+        private const val NIGHT_IMAGES = 3
 
         fun mp(s: Size): String {
             val mp = s.width.toLong() * s.height / 1_000_000.0

@@ -51,6 +51,8 @@ data class Lens(
     val maxResJpeg: Size?,
     val previewSizes: List<Size>,
     val videoSizes: List<Size>,
+    /** YUV output sizes in the normal mode (QR scanning, night mode, the interval run's metering stream). */
+    val yuvSizes: List<Size>,
     val tenBit: Boolean,
     val manualSensor: Boolean,
     val iso: Range<Int>?,
@@ -140,6 +142,7 @@ object LensDetector {
             maxResJpeg = maxJpeg,
             previewSizes = map?.getOutputSizes(SurfaceTexture::class.java)?.toList().orEmpty(),
             videoSizes = map?.getOutputSizes(MediaRecorder::class.java)?.toList().orEmpty(),
+            yuvSizes = map?.getOutputSizes(ImageFormat.YUV_420_888)?.toList().orEmpty(),
             tenBit = tenBit,
             manualSensor = ch.has(CameraMetadata.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_SENSOR),
             iso = ch.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE),

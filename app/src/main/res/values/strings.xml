@@ -104,4 +104,87 @@
     <string name="video_codec">Codec</string>
     <string name="codec_hevc">HEVC (H.265), smaller files</string>
     <string name="codec_avc">H.264, plays everywhere</string>
+
+    <!-- Units -->
+    <string name="unit_s">%1$d s</string>
+    <string name="unit_min">%1$d min</string>
+    <string name="unit_h">%1$d h</string>
+
+    <!-- Night mode -->
+    <string name="mode_night">NIGHT</string>
+    <string name="take_night_photo">Take a night photo (several frames merged)</string>
+    <string name="night_handheld">HANDHELD · %1$d FRAMES</string>
+    <string name="night_tripod">TRIPOD · %1$d FRAMES</string>
+    <string name="night_note_handheld">Night mode takes %1$d photos in a row and merges them into one JPEG with less noise. It\'s a multi-frame merge, not one long exposure: hold the phone as still as you can until it\'s done. Things that move may look softer. RAW isn\'t saved in night mode.</string>
+    <string name="night_note_tripod">Night mode takes %1$d longer photos in a row and merges them into one JPEG with less noise. It\'s a multi-frame merge, not one long exposure: put the phone on a tripod or something steady and don\'t touch it until it\'s done. RAW isn\'t saved in night mode.</string>
+    <string name="night_capturing">HOLD STILL · FRAME %1$d OF %2$d</string>
+    <string name="night_merging">MERGING %1$d FRAMES…</string>
+    <string name="night_last">Last night photo: %1$d frames merged</string>
+
+    <!-- Interval and timelapse -->
+    <string name="mode_interval">INTERVAL</string>
+    <string name="start_interval">Start interval shooting</string>
+    <string name="interval_every">EVERY</string>
+    <string name="interval_stop_after">STOP</string>
+    <string name="interval_save">SAVE</string>
+    <string name="interval_out_video">TIMELAPSE VIDEO</string>
+    <string name="interval_out_photos">PHOTOS</string>
+    <string name="interval_until_stopped">UNTIL I STOP</string>
+    <plurals name="interval_after_shots">
+        <item quantity="one">%1$d shot</item>
+        <item quantity="other">%1$d shots</item>
+    </plurals>
+    <string name="interval_summary_video">%1$d shots over %2$s make a %3$s video at 30 fps.</string>
+    <string name="interval_summary_photos">%1$d JPEG photos over %2$s, saved in DCIM/CameraCtrl.</string>
+    <string name="interval_summary_open_video">A shot every %1$s until you stop; every 30 shots make one second of video.</string>
+    <string name="interval_summary_open_photos">A JPEG photo every %1$s until you stop.</string>
+    <string name="interval_note">The run goes on with the screen dimmed or off: CameraCtrl keeps the camera in a foreground service until the run ends or you stop it. JPEG only; RAW isn\'t used.</string>
+    <string name="interval_running_photos">INTERVAL SHOOTING</string>
+    <string name="interval_running_video">TIMELAPSE</string>
+    <string name="interval_preview_off">No preview during the run; this is the last shot</string>
+    <string name="interval_label_shots">SHOTS</string>
+    <string name="interval_label_next">NEXT</string>
+    <string name="interval_label_elapsed">ELAPSED</string>
+    <string name="interval_video_so_far">Video so far: %1$s</string>
+    <string name="interval_dim">Dim screen</string>
+    <string name="interval_dim_hint">tap to wake</string>
+    <string name="interval_dim_line">%1$d · %2$s</string>
+    <string name="interval_stop">Stop</string>
+    <string name="interval_finishing">Finishing the timelapse video…</string>
+    <string name="interval_saved_video">Timelapse saved: %1$d frames</string>
+    <plurals name="interval_saved_photos">
+        <item quantity="one">%1$d photo saved</item>
+        <item quantity="other">%1$d photos saved</item>
+    </plurals>
+    <string name="interval_err_start">Couldn\'t start interval shooting. Try again with CameraCtrl on screen.</string>
+    <string name="interval_channel">Interval shooting</string>
+    <string name="interval_channel_desc">Shown while an interval run or a timelapse is going on</string>
+    <string name="interval_notif_title">Interval shooting</string>
+    <string name="interval_notif_text">CameraCtrl is using the camera for your interval run. Tap Stop to end it.</string>
+
+    <!-- QR and barcode scanner -->
+    <string name="mode_scan">SCAN</string>
+    <string name="scan_hint">Point at a QR code or barcode</string>
+    <string name="scan_link">Link</string>
+    <string name="scan_wifi">Wi-Fi network</string>
+    <string name="scan_text">Text</string>
+    <string name="scan_open">Open link</string>
+    <string name="scan_open_note">Opens in your browser only when you tap Open. Check the full address above first.</string>
+    <string name="scan_copy">Copy</string>
+    <string name="scan_share">Share</string>
+    <string name="scan_share_title">Share the code\'s content</string>
+    <string name="scan_again">Scan again</string>
+    <string name="scan_wifi_name">Network</string>
+    <string name="scan_wifi_password">Password</string>
+    <string name="scan_wifi_security">Security</string>
+    <string name="scan_wifi_hidden">Hidden network</string>
+    <string name="scan_wifi_sec_open">None (open network)</string>
+    <string name="scan_wifi_sec_wep">WEP</string>
+    <string name="scan_wifi_sec_wpa">WPA/WPA2</string>
+    <string name="scan_wifi_sec_sae">WPA3</string>
+    <string name="scan_wifi_sec_unknown">Unknown</string>
+    <string name="scan_wifi_connect">Add this network</string>
+    <string name="scan_wifi_note">Opens Android\'s own screen to add the network; you confirm it there. CameraCtrl can\'t see or change your Wi-Fi.</string>
+    <string name="scan_wifi_unsupported">Android can\'t add this kind of network from an app. Copy the password and add the network in Settings.</string>
+    <string name="scan_wifi_copy">Copy password</string>
 </resources>

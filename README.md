@@ -19,6 +19,9 @@ Part of the [Ctrl series](#the-ctrl-series) by VKNXWorks.
 - **Camera modes page:** everything your phone reports for each lens: sensor size and pixel count, colour filter, RAW profiles and sizes, maximum resolution mode, JPEG and video sizes, 10-bit HDR, ISO and shutter ranges, closest focus and Camera2 level
 - **Pro controls:** manual ISO and shutter speed (down to the lens's longest exposure), manual focus, white balance presets and exposure compensation
 - **Tap to focus**, rule-of-thirds grid, self-timer (3 or 10 s), torch
+- **Night mode:** takes a burst of 6 (handheld) or 8 (tripod) photos, lines them up and merges them into one JPEG with much less noise. It's a multi-frame merge, not one long exposure, and the app says so; RAW stays in Photo mode
+- **Interval shooting and timelapses:** a photo every 1 s to 10 min, for a number of shots, a length of time or until you stop. Keep every photo, or let CameraCtrl build a timelapse video (30 fps, HEVC or H.264) on the phone. The run goes on with the screen dimmed or off
+- **QR code and barcode scanner:** reads QR, Data Matrix, Aztec, PDF417 and the common barcodes on the phone. Copy or share what it says; links open only when you tap Open, with the full address shown; Wi-Fi codes open Android's own add-network screen (or copy the password)
 - **Video** in 4K or 1080p, HEVC or H.264, with sound if you allow the microphone
 - **Formats:** RAW + JPEG, RAW only or JPEG only, with JPEG quality 90 to 100 %
 - **No location, ever:** CameraCtrl doesn't have the location permission
@@ -33,7 +36,7 @@ Android lets each phone maker decide which camera modes other apps may use. Came
 
 - Android 15 or newer, on a 64-bit ARM phone (nearly every phone from the last several years)
 - Works on any Android ROM as a normal app: stock Android, LineageOS, GrapheneOS, CalyxOS, /e/OS and the phone makers' own systems. It doesn't need root.
-- **Google-free and de-Googled:** no Google Play services, Firebase or other Google libraries, and the app never contacts Google.
+- **Google-free and de-Googled:** no Google Play services, Firebase or other Google libraries, and the app never contacts Google. (The QR scanner uses ZXing, an independent open-source library that only carries a com.google package name.)
 
 ## Install
 
@@ -46,6 +49,7 @@ Android lets each phone maker decide which camera modes other apps may use. Came
 ## Getting started
 
 - **Shoot:** tap the shutter. The chip at the top left switches between RAW+JPEG, RAW and JPEG; **MAX RES** appears on lenses that have a maximum resolution mode.
+- **Modes:** the row at the bottom: **PHOTO**, **NIGHT**, **VIDEO**, **INTERVAL** and **SCAN**. Night and Interval show their options above the shutter (handheld or tripod; interval, when to stop, photos or video). While an interval run is going, the screen shows the last shot and the progress instead of the preview; **Dim screen** turns it black until you tap it, and **Stop** ends the run (a timelapse video is then finished and saved).
 - **Lenses:** the row above the shutter: **AUTO** is the phone's multi-camera (pinch to zoom), the numbers are the single lenses.
 - **Pro:** tap **PRO** for ISO, shutter, focus, white balance and EV. **AUTO** gives exposure back to the camera.
 - **Camera modes:** the info button at the top shows what each lens offers.
@@ -79,6 +83,7 @@ Photos are saved in **DCIM/CameraCtrl**, videos in **Movies/CameraCtrl**.
 | Record audio (optional) | Sound in videos. Asked for when you switch to Video; without it, videos are silent. |
 | Use biometric hardware | Optional fingerprint unlock for the app lock. |
 | Hide other apps' floating windows over the PIN screen | While the lock or PIN screen is showing, other apps' floating windows are hidden over it. |
+| Run foreground service, of the camera type | Only while an interval run or timelapse you started is going: it keeps the camera working with the screen dimmed or off, and shows a notification (if notifications are allowed) with a Stop button. Nothing runs in the background otherwise. |
 | App-internal broadcasts (`com.vknxworks.cameractrl.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`) | Added by AndroidX so that only CameraCtrl itself can send to its own internal receivers. |
 
 See [Privacy](#privacy) for what happens to your data.
@@ -99,7 +104,8 @@ Turn the app lock on under **Settings > Privacy and security > App lock**. It's 
 
 - Photos and videos are written straight into your library on the phone. CameraCtrl keeps no copies of its own.
 - **No location** is ever saved in your photos: CameraCtrl can't read your location at all.
-- The camera is only open while the viewfinder is on screen; it closes when you leave the app.
+- The camera is only open while the viewfinder is on screen; it closes when you leave the app. The one exception is an interval run you start yourself: it keeps the camera until the run ends or you stop it, with Android's foreground-service notice showing that the camera is in use.
+- Night mode and the timelapse video are made on the phone. The QR scanner decodes codes on the phone with ZXing; nothing is looked up online, and a link only opens in your browser when you tap Open.
 - Settings are in CameraCtrl's private storage. Android backups don't include them, and CameraCtrl is left out of Android's cloud backup and its phone-to-phone transfer.
 - The Support, Report a bug, Source code and Licence links on the You page open in your browser, only when you tap them.
 
@@ -178,5 +184,7 @@ Native Android apps for self-hosted services and everyday tools, all with the sa
 ## License
 
 CameraCtrl is licensed under the [GNU General Public License v3.0](LICENSE). © VKNXWorks
+
+QR codes and barcodes are decoded with [ZXing](https://github.com/zxing/zxing) core, under the Apache License 2.0.
 
 Fonts, bundled in the app (nothing is downloaded): [Space Grotesk](https://github.com/floriankarsten/space-grotesk) and [JetBrains Mono](https://github.com/JetBrains/JetBrainsMono), both under the SIL Open Font License 1.1 ([FONT-LICENSE-SpaceGrotesk.txt](FONT-LICENSE-SpaceGrotesk.txt), [FONT-LICENSE-JetBrainsMono.txt](FONT-LICENSE-JetBrainsMono.txt)).

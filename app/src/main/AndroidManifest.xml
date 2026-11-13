@@ -15,6 +15,10 @@
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
     <!-- Hides other apps' floating windows over the lock and PIN screens only. Install-time permission, no prompt. -->
     <uses-permission android:name="android.permission.HIDE_OVERLAY_WINDOWS" />
+    <!-- Interval shooting and timelapses: a camera-type foreground service keeps a run going while the screen is
+         dimmed or off. Install-time permissions, no prompt; only used while a run you started is going. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
 
     <uses-feature android:name="android.hardware.camera.any" android:required="true" />
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
@@ -54,6 +58,12 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
+
+        <!-- Holds an interval run (camera type). Not exported: only CameraCtrl itself can start or stop it. -->
+        <service
+            android:name=".interval.IntervalService"
+            android:exported="false"
+            android:foregroundServiceType="camera" />
 
         <!-- No downloadable emoji font: don't let androidx.emoji2 look one up from a font provider
              at start-up. Emoji are drawn with the phone's own emoji font instead. -->

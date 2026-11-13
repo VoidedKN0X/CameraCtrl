@@ -48,10 +48,30 @@ object Saver {
         return uri
     }
 
-    fun saveJpeg(context: Context, image: Image, name: String): Uri? {
+    fun saveJpeg(context: Context, image: Image, name: String): Uri? = saveJpegBytes(context, jpegBytes(image), name)
+
+    fun jpegBytes(image: Image): ByteArray {
         val buf = image.planes[0].buffer
-        val bytes = ByteArray(buf.remaining()).also { buf.get(it) }
-        return write(context, "$name.jpg", "image/jpeg") { it.write(bytes) }
+        return ByteArray(buf.remaining()).also { buf.get(it) }
+    }
+
+    fun saveJpegBytes(context: Context, bytes: ByteArray, name: String): Uri? =
+        write(context, "$name.jpg", "image/jpeg") { it.write(bytes) }
+
+    /** A finished JPEG file (night mode) into DCIM/CameraCtrl. */
+    fun saveJpegFile(context: Context, file: java.io.File, displayName: String): Uri? =
+        write(context, displayName, "image/jpeg") { out -> file.inputStream().use { it.copyTo(out) } }
+
+    /** A finished video file (a timelapse) into Movies/CameraCtrl. */
+    fun saveVideoFile(context: Context, file: java.io.File, displayName: String): Uri? {
+        val uri = insert(context, displayName, "video/mp4", video = true) ?: return null
+        val ok = runCatching { context.contentResolver.openOutputStream(uri)!!.use { out -> file.inputStream().use { it.copyTo(out) } } }.isSuccess
+        if (!ok) {
+            runCatching { context.contentResolver.delete(uri, null, null) }
+            return null
+        }
+        finish(context, uri)
+        return uri
     }
 
     /** RAW16 is written as it comes; RAW10 and RAW12 are unpacked to 16 bits per pixel first. All become DNG files. */

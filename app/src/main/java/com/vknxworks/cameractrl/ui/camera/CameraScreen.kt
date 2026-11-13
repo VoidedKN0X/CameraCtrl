@@ -50,6 +50,8 @@ import androidx.compose.material.icons.outlined.FlashlightOn
 import androidx.compose.material.icons.outlined.Grid3x3
 import androidx.compose.material.icons.outlined.GridOff
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.NightsStay
+import androidx.compose.material.icons.outlined.Timelapse
 import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.outlined.Timer
 import androidx.compose.material.icons.outlined.TimerOff
@@ -81,6 +83,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
@@ -101,6 +104,9 @@ import com.vknxworks.cameractrl.camera.PhotoFormat
 import com.vknxworks.cameractrl.camera.Setup
 import com.vknxworks.cameractrl.camera.resolveRaw
 import com.vknxworks.cameractrl.container
+import com.vknxworks.cameractrl.interval.IntervalConfig
+import com.vknxworks.cameractrl.interval.IntervalPlan
+import com.vknxworks.cameractrl.interval.IntervalState
 import com.vknxworks.cameractrl.ui.common.formatDuration
 import com.vknxworks.cameractrl.ui.common.hasPermission
 import com.vknxworks.cameractrl.ui.common.launch
@@ -122,9 +128,9 @@ import kotlin.math.pow
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 
-private val Ink = Color(0xFFF2F2EE)
-private val Dim = Color(0xB3F2F2EE)
-private val Scrim = Color(0x66000000)
+internal val Ink = Color(0xFFF2F2EE)
+internal val Dim = Color(0xB3F2F2EE)
+internal val Scrim = Color(0x66000000)
 
 @Composable
 fun CameraScreen() {
@@ -150,11 +156,18 @@ fun CameraScreen() {
         MessageView(Icons.Outlined.PhotoCamera, stringResource(R.string.no_camera))
         return
     }
-    Viewfinder(lenses)
+    // An interval run has the camera (in its foreground service): show the run, not the viewfinder.
+    val run by context.container.interval.state.collectAsStateWithLifecycle()
+    var mode by rememberSaveable { mutableStateOf(Mode.PHOTO) }
+    if (run.active) {
+        IntervalRunScreen(run, onStop = { context.container.interval.stop() })
+        return
+    }
+    Viewfinder(lenses, mode, run) { mode = it }
 }
 
 @Composable
-private fun Viewfinder(lenses: List<Lens>) {
+private fun Viewfinder(lenses: List<Lens>, mode: Mode, run: IntervalState, setMode: (Mode) -> Unit) {
     val context = LocalContext.current
     val c = context.container
     val nav = LocalNavigator.current
@@ -182,7 +195,6 @@ private fun Viewfinder(lenses: List<Lens>) {
     }
 
     var front by rememberSaveable { mutableStateOf(false) }
-    var mode by rememberSaveable { mutableStateOf(Mode.PHOTO) }
     var lensKey by rememberSaveable { mutableStateOf<String?>(null) }
     var pro by rememberSaveable { mutableStateOf(false) }
     var manual by remember { mutableStateOf(Manual()) }
@@ -190,9 +202,11 @@ private fun Viewfinder(lenses: List<Lens>) {
     val group = lenses.filter { (it.facing == CameraMetadata.LENS_FACING_FRONT) == front }.ifEmpty { lenses }
     val lens = group.firstOrNull { it.key == lensKey } ?: group.firstOrNull { it.logical } ?: group.first()
     val maxRes = settings.maxRes && lens.supportsMaxRes && mode == Mode.PHOTO
-    val raw = lens.resolveRaw(settings.rawProfile, maxRes)
+    // Only Photo saves RAW; night, interval and scan work with JPEG (or nothing at all).
+    val raw = if (mode == Mode.PHOTO) lens.resolveRaw(settings.rawProfile, maxRes) else null
+    val format = if (mode == Mode.PHOTO) settings.format else PhotoFormat.JPEG
     val videoSize = remember(lens, settings.videoUhd) { chooseVideo(lens, settings.videoUhd) }
-    val setup = Setup(lens, mode, settings.format, raw, maxRes, videoSize, settings.hevc, settings.jpegQuality)
+    val setup = Setup(lens, mode, format, raw, maxRes, videoSize, settings.hevc, settings.jpegQuality)
 
     var texture by remember { mutableStateOf<SurfaceTexture?>(null) }
     var resumed by remember { mutableStateOf(true) }
@@ -225,16 +239,47 @@ private fun Viewfinder(lenses: List<Lens>) {
     var focusPoint by remember { mutableStateOf<Offset?>(null) }
     var focusAt by remember { mutableLongStateOf(0L) }
 
+    fun startInterval() {
+        val plan = IntervalPlan(settings.intervalSeconds * 1000L, settings.intervalStop)
+        val config = IntervalConfig(
+            setup = setup.copy(mode = Mode.INTERVAL, format = PhotoFormat.JPEG, raw = null, maxRes = false),
+            manual = manual,
+            orientation = controller.orientation,
+            plan = plan,
+            video = settings.intervalVideo,
+            uhd = settings.videoUhd,
+            hevc = settings.hevc,
+            shutterSound = settings.shutterSound,
+        )
+        // The run opens the camera itself, in its foreground service.
+        controller.close()
+        c.interval.start(config)
+    }
+
     fun shoot() {
-        if (mode == Mode.VIDEO) { controller.toggleRecording(); return }
+        when (mode) {
+            Mode.VIDEO -> { controller.toggleRecording(); return }
+            Mode.INTERVAL -> { if (cam.ready) startInterval(); return }
+            Mode.SCAN -> return
+            else -> Unit
+        }
         if (cam.busy || countdown > 0) return
+        val take = { if (mode == Mode.NIGHT) controller.captureNight(settings.nightPreset) else controller.capture() }
         if (settings.timer > 0) {
             scope.launch {
                 for (i in settings.timer downTo 1) { countdown = i; delay(1000) }
                 countdown = 0
-                controller.capture()
+                take()
             }
-        } else controller.capture()
+        } else take()
+    }
+
+    // The last interval run's result, shown for a moment.
+    LaunchedEffect(run.resultUri, run.error, run.resultShots) {
+        if (run.resultUri != null || run.error != null) {
+            delay(8_000)
+            c.interval.clearResult()
+        }
     }
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
@@ -262,7 +307,7 @@ private fun Viewfinder(lenses: List<Lens>) {
                     }
                 }
                 Spacer(Modifier.weight(1f))
-                if (mode == Mode.PHOTO) {
+                if (mode == Mode.PHOTO || mode == Mode.NIGHT) {
                     IconToggle(if (settings.timer > 0) Icons.Outlined.Timer else Icons.Outlined.TimerOff, stringResource(R.string.timer), settings.timer > 0, badge = settings.timer.takeIf { it > 0 }?.toString()) {
                         val next = when (settings.timer) { 0 -> 3; 3 -> 10; else -> 0 }
                         scope.launch { c.settings.update { it.copy(timer = next) } }
@@ -302,7 +347,8 @@ private fun Viewfinder(lenses: List<Lens>) {
                         },
                         modifier = Modifier.fillMaxSize(),
                     )
-                    if (settings.grid) GridOverlay()
+                    if (settings.grid && mode != Mode.SCAN) GridOverlay()
+                    if (mode == Mode.SCAN) ScanFrame()
                     Box(
                         Modifier.fillMaxSize()
                             .pointerInputTap(lens.key) { o, w, h ->
@@ -322,6 +368,25 @@ private fun Viewfinder(lenses: List<Lens>) {
                         if (cam.recording) RecordingClock(cam.recordStart)
                         cam.error?.let { e -> Tag(stringResource(e), Color(0xCCB3261E)) }
                         if (mode == Mode.PHOTO && settings.format != PhotoFormat.JPEG && raw == null) Tag(stringResource(R.string.no_raw_here), Scrim)
+                        if (mode == Mode.NIGHT && cam.nightTotal > 0) {
+                            val merging = cam.nightFrames >= cam.nightTotal
+                            Tag(
+                                if (merging) stringResource(R.string.night_merging, cam.nightTotal)
+                                else stringResource(R.string.night_capturing, cam.nightFrames, cam.nightTotal),
+                                CtrlColors.Accent.copy(alpha = 0.85f),
+                            )
+                        } else if (mode == Mode.NIGHT && cam.lastNightMerged > 0) {
+                            Tag(stringResource(R.string.night_last, cam.lastNightMerged), Scrim)
+                        }
+                        if (mode == Mode.SCAN && cam.scanned == null) Tag(stringResource(R.string.scan_hint), Scrim)
+                        run.error?.let { e -> Tag(stringResource(e), Color(0xCCB3261E)) }
+                        if (run.resultUri != null) {
+                            Tag(
+                                if (run.resultIsVideo) stringResource(R.string.interval_saved_video, run.resultShots)
+                                else pluralStringResource(R.plurals.interval_saved_photos, run.resultShots, run.resultShots),
+                                Scrim,
+                            )
+                        }
                     }
                     Column(Modifier.align(Alignment.BottomCenter).padding(bottom = 10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         if (lens.zoom != null && abs(manual.zoom - 1f) > 0.04f) Tag("%.1f×".format(Locale.US, manual.zoom), Scrim)
@@ -333,9 +398,15 @@ private fun Viewfinder(lenses: List<Lens>) {
             // ---------- Lenses ----------
             LensRow(group, lens) { l -> lensKey = l.key }
 
-            // ---------- Pro controls ----------
-            AnimatedVisibility(pro, enter = fadeIn(), exit = fadeOut()) {
+            // ---------- Pro controls, or the mode's own options ----------
+            AnimatedVisibility(pro && mode != Mode.SCAN, enter = fadeIn(), exit = fadeOut()) {
                 ProPanel(lens, manual, mode) { manual = it }
+            }
+            if (!pro && mode == Mode.NIGHT) {
+                NightPanel(settings.nightPreset, enabled = !cam.busy) { p -> scope.launch { c.settings.update { it.copy(nightPreset = p) } } }
+            }
+            if (!pro && mode == Mode.INTERVAL) {
+                IntervalPanel(settings) { t -> scope.launch { c.settings.update(t) } }
             }
 
             // ---------- Shutter row ----------
@@ -344,9 +415,11 @@ private fun Viewfinder(lenses: List<Lens>) {
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                LastCapture(cam.lastUri, cam.lastIsVideo)
-                Shutter(mode, cam.recording, enabled = cam.ready && !cam.busy, onClick = ::shoot)
-                RoundIcon(Icons.Outlined.Cameraswitch, stringResource(R.string.switch_camera), enabled = !cam.recording && lenses.any { (it.facing == CameraMetadata.LENS_FACING_FRONT) != front }) {
+                val runResult = run.resultUri
+                if (cam.lastUri == null && runResult != null) LastCapture(runResult, run.resultIsVideo) else LastCapture(cam.lastUri, cam.lastIsVideo)
+                if (mode == Mode.SCAN) Spacer(Modifier.size(78.dp))
+                else Shutter(mode, cam.recording, enabled = cam.ready && !cam.busy, onClick = ::shoot)
+                RoundIcon(Icons.Outlined.Cameraswitch, stringResource(R.string.switch_camera), enabled = !cam.recording && !cam.busy && lenses.any { (it.facing == CameraMetadata.LENS_FACING_FRONT) != front }) {
                     front = !front
                     lensKey = null
                 }
@@ -354,15 +427,24 @@ private fun Viewfinder(lenses: List<Lens>) {
 
             // ---------- Modes ----------
             Row(
-                Modifier.fillMaxWidth().navigationBarsPadding().padding(bottom = 12.dp),
-                horizontalArrangement = Arrangement.Center,
+                Modifier.fillMaxWidth().navigationBarsPadding().padding(bottom = 12.dp).horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(0.dp, Alignment.CenterHorizontally),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                ModeTab(stringResource(R.string.mode_photo), mode == Mode.PHOTO, enabled = !cam.recording) { mode = Mode.PHOTO }
-                ModeTab(stringResource(R.string.mode_video), mode == Mode.VIDEO, enabled = !cam.recording) { mode = Mode.VIDEO }
-                ModeTab(stringResource(R.string.mode_pro), pro, enabled = true) { pro = !pro }
+                val free = !cam.recording && !cam.busy
+                ModeTab(stringResource(R.string.mode_photo), mode == Mode.PHOTO, enabled = free) { setMode(Mode.PHOTO) }
+                ModeTab(stringResource(R.string.mode_night), mode == Mode.NIGHT, enabled = free) { setMode(Mode.NIGHT) }
+                ModeTab(stringResource(R.string.mode_video), mode == Mode.VIDEO, enabled = free) { setMode(Mode.VIDEO) }
+                ModeTab(stringResource(R.string.mode_interval), mode == Mode.INTERVAL, enabled = free) { setMode(Mode.INTERVAL) }
+                ModeTab(stringResource(R.string.mode_scan), mode == Mode.SCAN, enabled = free) { setMode(Mode.SCAN) }
+                if (mode != Mode.SCAN) ModeTab(stringResource(R.string.mode_pro), pro, enabled = true) { pro = !pro }
             }
         }
+    }
+
+    // ---------- A scanned code ----------
+    cam.scanned?.let { found ->
+        if (mode == Mode.SCAN) ScanResultSheet(found, onDismiss = { controller.resumeScan() })
     }
 }
 
@@ -430,7 +512,7 @@ private fun RecordingClock(start: Long) {
 }
 
 @Composable
-private fun Tag(text: String, bg: Color) {
+internal fun Tag(text: String, bg: Color) {
     Text(
         text,
         style = CtrlType.Status,
@@ -442,7 +524,7 @@ private fun Tag(text: String, bg: Color) {
 // ---------- Controls ----------
 
 @Composable
-private fun Pill(text: String, active: Boolean, onClick: () -> Unit) {
+internal fun Pill(text: String, active: Boolean, enabled: Boolean = true, onClick: () -> Unit) {
     Text(
         text,
         style = CtrlType.LabelStrong,
@@ -450,7 +532,8 @@ private fun Pill(text: String, active: Boolean, onClick: () -> Unit) {
         modifier = Modifier
             .clip(RoundedCornerShape(10.dp))
             .background(if (active) CtrlColors.Accent else Color(0x33FFFFFF))
-            .clickable(onClick = onClick)
+            .clickable(enabled = enabled, onClick = onClick)
+            .alpha(if (enabled) 1f else 0.5f)
             .padding(horizontal = 12.dp, vertical = 8.dp),
     )
 }
@@ -475,7 +558,15 @@ private fun RoundIcon(icon: androidx.compose.ui.graphics.vector.ImageVector, lab
 
 @Composable
 private fun Shutter(mode: Mode, recording: Boolean, enabled: Boolean, onClick: () -> Unit) {
-    val label = stringResource(if (mode == Mode.PHOTO) R.string.take_photo else if (recording) R.string.stop_recording else R.string.start_recording)
+    val label = stringResource(
+        when {
+            mode == Mode.NIGHT -> R.string.take_night_photo
+            mode == Mode.INTERVAL -> R.string.start_interval
+            mode != Mode.VIDEO -> R.string.take_photo
+            recording -> R.string.stop_recording
+            else -> R.string.start_recording
+        },
+    )
     val inner by animateFloatAsState(if (recording) 0.45f else 0.82f, label = "shutter")
     Box(
         Modifier.size(78.dp).clip(CircleShape).border(BorderStroke(4.dp, Ink), CircleShape)
@@ -489,6 +580,8 @@ private fun Shutter(mode: Mode, recording: Boolean, enabled: Boolean, onClick: (
                 .background(if (mode == Mode.VIDEO) Color(0xFFE5483B) else Ink),
         )
         if (mode == Mode.VIDEO && !recording) Icon(Icons.Outlined.Videocam, label, tint = Ink, modifier = Modifier.size(26.dp))
+        if (mode == Mode.NIGHT) Icon(Icons.Outlined.NightsStay, label, tint = Color.Black, modifier = Modifier.size(26.dp))
+        if (mode == Mode.INTERVAL) Icon(Icons.Outlined.Timelapse, label, tint = Color.Black, modifier = Modifier.size(26.dp))
     }
 }
 

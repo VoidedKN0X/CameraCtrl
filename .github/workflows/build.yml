@@ -101,7 +101,10 @@ jobs:
           set -o pipefail
           # Every library that ends up in the APK, including transitive ones. Nothing from Google
           # (Play services, Firebase, Guava, Gson, Protobuf, Material Components...) may be in it.
-          ./gradlew --no-daemon -q :app:dependencies --configuration releaseRuntimeClasspath > deps.txt
+          ./gradlew --no-daemon -q :app:dependencies --configuration releaseRuntimeClasspath > deps-all.txt
+          # ZXing core (the QR and barcode decoder, Apache-2.0) only has a com.google group name: it's an
+          # independent open-source library with no Google services and no dependencies of its own.
+          grep -vE 'com\.google\.zxing:core:' deps-all.txt > deps.txt || true
           if grep -qE 'com\.google\.|firebase|play-services|gms' deps.txt; then
             # One annotation per distinct library, with the line that pulls it in, so it shows on the run page.
             grep -E 'com\.google\.|firebase|play-services|gms' deps.txt | sed -E 's/^[| \\+-]+//; s/ \(\*\)$//' | sort -u | head -20 | while IFS= read -r line; do

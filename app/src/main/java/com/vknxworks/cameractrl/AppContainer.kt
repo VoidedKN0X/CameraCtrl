@@ -4,6 +4,7 @@ import android.content.Context
 import com.vknxworks.cameractrl.data.lock.LockVault
 import com.vknxworks.cameractrl.data.settings.AppSettings
 import com.vknxworks.cameractrl.data.settings.SettingsRepository
+import com.vknxworks.cameractrl.interval.IntervalRunner
 import com.vknxworks.cameractrl.ui.lock.AppLock
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
@@ -20,6 +21,9 @@ class AppContainer(val context: Context) {
 
     /** The app lock's PIN and fingerprint key (the shared Ctrl series lock). */
     val vault = LockVault(context, "cameractrl")
+
+    /** Interval shooting and timelapses, which go on in a foreground service while the screen is dimmed or off. */
+    val interval by lazy { IntervalRunner(context, appScope) }
 
     init {
         AppLock.onLocked = { onLocked() }

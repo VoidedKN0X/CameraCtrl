@@ -13,6 +13,8 @@ import androidx.datastore.preferences.preferencesDataStore
 import com.vknxworks.cameractrl.R
 import com.vknxworks.cameractrl.camera.PhotoFormat
 import com.vknxworks.cameractrl.camera.RawProfile
+import com.vknxworks.cameractrl.interval.StopRule
+import com.vknxworks.cameractrl.night.NightPreset
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
@@ -50,6 +52,13 @@ data class AppSettings(
     val lockTimeout: LockTimeout = LockTimeout.IMMEDIATELY,
     val hideScreenshots: Boolean = false,
     val hideRecents: Boolean = false,
+    /** Night mode: tripod or handheld. */
+    val nightPreset: NightPreset = NightPreset.HANDHELD,
+    /** Interval mode: seconds between shots. */
+    val intervalSeconds: Int = 5,
+    val intervalStop: StopRule = StopRule.AfterShots(300),
+    /** Interval mode: a timelapse video (true) or every shot as a photo (false). */
+    val intervalVideo: Boolean = true,
 )
 
 class SettingsRepository(private val context: Context, scope: CoroutineScope) {
@@ -66,6 +75,10 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
         val lockTimeout = stringPreferencesKey("lock_timeout")
         val hideScreenshots = booleanPreferencesKey("hide_screenshots")
         val hideRecents = booleanPreferencesKey("hide_recents")
+        val nightPreset = stringPreferencesKey("night_preset")
+        val intervalSeconds = intPreferencesKey("interval_seconds")
+        val intervalStop = stringPreferencesKey("interval_stop")
+        val intervalVideo = booleanPreferencesKey("interval_video")
     }
 
     private val prefs: Flow<Preferences> = context.appDataStore.data.catch { e ->
@@ -89,6 +102,10 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
         lockTimeout = enumOr(this[K.lockTimeout], LockTimeout.IMMEDIATELY),
         hideScreenshots = this[K.hideScreenshots] ?: false,
         hideRecents = this[K.hideRecents] ?: false,
+        nightPreset = enumOr(this[K.nightPreset], NightPreset.HANDHELD),
+        intervalSeconds = (this[K.intervalSeconds] ?: 5).takeIf { it in INTERVAL_CHOICES } ?: 5,
+        intervalStop = StopRule.decode(this[K.intervalStop]) ?: StopRule.AfterShots(300),
+        intervalVideo = this[K.intervalVideo] ?: true,
     )
 
     /** Saves a change. If the phone's storage fails, the change is dropped instead of closing the app. */
@@ -108,12 +125,19 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
                 p[K.lockTimeout] = s.lockTimeout.name
                 p[K.hideScreenshots] = s.hideScreenshots
                 p[K.hideRecents] = s.hideRecents
+                p[K.nightPreset] = s.nightPreset.name
+                p[K.intervalSeconds] = s.intervalSeconds
+                p[K.intervalStop] = s.intervalStop.encode()
+                p[K.intervalVideo] = s.intervalVideo
             }
         } catch (e: IOException) {
             // Nothing to do: the settings stay as they were.
         }
     }
 }
+
+/** Seconds between interval shots that can be chosen. */
+val INTERVAL_CHOICES = listOf(1, 2, 3, 5, 10, 15, 30, 60, 120, 300, 600)
 
 private inline fun <reified E : Enum<E>> enumOr(name: String?, default: E): E =
     name?.let { n -> enumValues<E>().firstOrNull { it.name == n } } ?: default
