@@ -217,9 +217,10 @@ class CameraController(private val context: Context) {
             val size = s.videoSize ?: Size(1920, 1080)
             val surface = persistent ?: MediaCodec.createPersistentInputSurface().also { persistent = it }
             // The persistent surface takes its buffer size from a prepared recorder before the session uses it.
-            runCatching {
-                val tmp = File(context.cacheDir, "prepare.mp4")
-                newRecorder(size, s.hevc, null, tmp, 0, audio = false).apply { prepare(); release() }
+            val tmp = File(context.cacheDir, "prepare.mp4")
+            try {
+                runCatching { newRecorder(size, s.hevc, null, tmp, 0, audio = false).apply { prepare(); release() } }
+            } finally {
                 tmp.delete()
             }
             outs += cfg(surface)

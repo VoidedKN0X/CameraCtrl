@@ -4,6 +4,23 @@ What changed in each CameraCtrl release. Every release on the [Releases page](ht
 
 To publish a new version: bump `versionCode` and `versionName` in `app/build.gradle.kts`, add a section here, and push to `main`. Pushes without a version bump only build; they don't make a release.
 
+## v0.1.1 (2026-11-13)
+
+A small security and housekeeping update. Nothing changes in how you take photos or videos.
+
+### Security
+
+- **Release builds drop debug logging** from CameraCtrl and its libraries, so nothing they would log ends up in the phone's log.
+- **The build tool download is checked:** the Gradle version used to build CameraCtrl is verified against its published SHA-256 checksum.
+
+### Privacy
+
+- Checked again: photos (JPEG and DNG) and videos never get a location. CameraCtrl has no location permission and writes no GPS data, so there's nothing to remove.
+
+### Fixed
+
+- A temporary file used to prepare video recording is now always deleted, even when preparing fails.
+
 ## v0.1.0 (2026-11-12)
 
 The first release of CameraCtrl: a private, offline camera that saves the sensor's RAW data.
