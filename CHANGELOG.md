@@ -4,6 +4,14 @@ What changed in each CameraCtrl release. Every release on the [Releases page](ht
 
 To publish a new version: bump `versionCode` and `versionName` in `app/build.gradle.kts`, add a section here, and push to `main`. Pushes without a version bump only build; they don't make a release.
 
+## Unreleased
+
+Built and checked by CI only: nothing here has been run on a phone.
+
+### Faster and smoother
+
+- **The camera is opened once at start, not twice.** CameraCtrl's settings are read from storage a moment after the app starts; until then the app works with the defaults (RAW + JPEG, HEVC, quality 95, maximum resolution off). If your settings differ from those and the viewfinder was ready first, the camera was opened with the defaults, closed, and opened again with your settings. The viewfinder now waits for the saved settings before it opens the camera the first time, so it's opened once with the right setup. The wait is normally a few milliseconds. It can't keep the camera closed: if reading the settings fails the defaults are used as before, and if storage hasn't answered after 2 seconds the camera is opened with what there is (and, as before, once more if the saved settings then turn out to be different). Coming back to the viewfinder later, switching lens or mode and changing a setting work exactly as before.
+
 ## v0.2.2 (2026-11-20)
 
 Built and checked by CI only: nothing in this release had been run on a phone when it was published.

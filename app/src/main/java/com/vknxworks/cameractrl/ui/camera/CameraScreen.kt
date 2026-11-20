@@ -232,9 +232,13 @@ private fun Viewfinder(lenses: List<Lens>, mode: Mode, run: IntervalState, setMo
         lifecycle.addObserver(obs)
         onDispose { lifecycle.removeObserver(obs) }
     }
-    LaunchedEffect(setup, texture, resumed) {
+    // The settings start as the defaults and the saved ones arrive a moment later. Opening before that would
+    // open the camera with the defaults and then close and open it again, so the first open waits for them.
+    // `loaded` always turns true (after 2 seconds at the latest), so this can't keep the camera closed.
+    val settingsLoaded by c.settings.loaded.collectAsStateWithLifecycle()
+    LaunchedEffect(setup, texture, resumed, settingsLoaded) {
         val t = texture
-        if (t != null && resumed) controller.open(setup, t)
+        if (t != null && resumed && settingsLoaded) controller.open(setup, t)
     }
     LaunchedEffect(manual) { controller.setManual(manual) }
     // A new lens starts with its own zoom and focus.

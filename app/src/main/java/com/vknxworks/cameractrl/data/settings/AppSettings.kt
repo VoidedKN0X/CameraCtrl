@@ -16,12 +16,13 @@ import com.vknxworks.cameractrl.camera.RawProfile
 import com.vknxworks.cameractrl.interval.StopRule
 import com.vknxworks.cameractrl.night.NightPreset
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 import java.io.IOException
 
 val Context.appDataStore: DataStore<Preferences> by preferencesDataStore(name = "cameractrl")
@@ -85,9 +86,38 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
         if (e is IOException) emit(emptyPreferences()) else throw e
     }
 
-    val settings: StateFlow<AppSettings> = prefs
-        .map { it.toSettings() }
-        .stateIn(scope, SharingStarted.Eagerly, AppSettings())
+    private val current = MutableStateFlow(AppSettings())
+    private val read = MutableStateFlow(false)
+
+    /** The settings: the defaults until the saved ones have been read (see [loaded]). */
+    val settings: StateFlow<AppSettings> = current
+
+    /**
+     * True once the saved settings have been read from storage, so whoever sees `true` here also sees the saved
+     * settings in [settings] (that one is always set first). The viewfinder waits for this before it opens the
+     * camera, so the camera isn't opened with the defaults and then again with the saved settings.
+     *
+     * It always becomes true: when reading ends for any reason (the defaults stay in use then, as before), and
+     * at the latest [LOAD_WAIT_MS] after the start even if storage hasn't answered by then.
+     */
+    val loaded: StateFlow<Boolean> = read
+
+    init {
+        scope.launch {
+            try {
+                prefs.map { it.toSettings() }.collect { s ->
+                    current.value = s
+                    read.value = true
+                }
+            } finally {
+                read.value = true
+            }
+        }
+        scope.launch {
+            delay(LOAD_WAIT_MS)
+            read.value = true
+        }
+    }
 
     private fun Preferences.toSettings() = AppSettings(
         format = enumOr(this[K.format], PhotoFormat.RAW_JPEG),
@@ -135,6 +165,9 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
         }
     }
 }
+
+/** The longest the viewfinder waits for the saved settings before it opens the camera with what it has. */
+private const val LOAD_WAIT_MS = 2_000L
 
 /** Seconds between interval shots that can be chosen. */
 val INTERVAL_CHOICES = listOf(1, 2, 3, 5, 10, 15, 30, 60, 120, 300, 600)
