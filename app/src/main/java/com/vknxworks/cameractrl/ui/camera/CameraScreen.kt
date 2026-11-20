@@ -68,6 +68,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -151,7 +152,16 @@ fun CameraScreen() {
         }
         return
     }
-    val lenses = remember { LensDetector.detect(context) }
+    // Reading every lens means many calls to the camera service: done off the main thread, so the first frame isn't
+    // held up. Nothing below (the "no camera" message, the viewfinder, opening the camera) runs before the list is in.
+    val detected by produceState<List<Lens>?>(null) {
+        value = withContext(Dispatchers.Default) { LensDetector.detect(context.applicationContext) }
+    }
+    val lenses = detected
+    if (lenses == null) {
+        Box(Modifier.fillMaxSize().background(Color.Black))
+        return
+    }
     if (lenses.isEmpty()) {
         MessageView(Icons.Outlined.PhotoCamera, stringResource(R.string.no_camera))
         return

@@ -150,6 +150,8 @@ class CameraController(private val context: Context) {
     private val decoder = Decoder()
     @Volatile private var scanBusy = false
     @Volatile private var scanPaused = false
+    /** The frame being read for a code. Only touched on the camera thread, and only while [scanBusy] is false. */
+    private var scanLuma = ByteArray(0)
 
     private var persistent: Surface? = null
     private var recorder: MediaRecorder? = null
@@ -160,6 +162,17 @@ class CameraController(private val context: Context) {
     @Volatile var orientation = 0
     @Volatile var shutterSound = true
     private val sound = MediaActionSound()
+
+    init {
+        // Loads the shutter and recording sounds ahead of time (on the camera thread), so the first one isn't late.
+        handler.post {
+            runCatching {
+                sound.load(MediaActionSound.SHUTTER_CLICK)
+                sound.load(MediaActionSound.START_VIDEO_RECORDING)
+                sound.load(MediaActionSound.STOP_VIDEO_RECORDING)
+            }
+        }
+    }
 
     private class Pending(val wantJpeg: Boolean, val wantRaw: Boolean, val saveJpeg: Boolean, val onShot: ((Shot?) -> Unit)?) {
         val result = CompletableDeferred<TotalCaptureResult>()
@@ -630,7 +643,9 @@ class CameraController(private val context: Context) {
         if (scanBusy || scanPaused) { img.close(); return }
         val w = img.width
         val h = img.height
-        val luma = ByteArray(w * h)
+        // One buffer, reused: a new frame is only copied when the reader thread is done with the last one (scanBusy).
+        if (scanLuma.size != w * h) scanLuma = ByteArray(w * h)
+        val luma = scanLuma
         try {
             val plane = img.planes[0]
             val buf = plane.buffer

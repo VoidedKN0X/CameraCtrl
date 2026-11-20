@@ -4,6 +4,16 @@ What changed in each CameraCtrl release. Every release on the [Releases page](ht
 
 To publish a new version: bump `versionCode` and `versionName` in `app/build.gradle.kts`, add a section here, and push to `main`. Pushes without a version bump only build; they don't make a release.
 
+## Unreleased
+
+Not released yet: these changes are built but have no version number. When the next version is published, move them under its heading.
+
+### Faster and smoother
+
+- **The app's first frame no longer waits for the lens list.** CameraCtrl asks Android about every camera and every physical lens when the viewfinder opens. That used to happen on the main thread before anything was drawn; it now runs in the background while the screen is black, and the viewfinder (or the "no camera" message) appears as soon as the list is in. The camera is still opened only once the list is known, exactly as before.
+- **The first shutter sound isn't late any more.** The shutter click and the two video sounds are loaded when the camera starts instead of at the first photo or recording. Nothing plays unless the shutter sound is on.
+- **Scan mode uses less memory and battery.** Reading QR codes and barcodes used to set aside a new buffer of up to 1.5 MB for every frame it checked; it now reuses one. What's scanned and how fast a code is found are unchanged.
+
 ## v0.2.0 (2026-11-13)
 
 Three new modes in the row at the bottom of the viewfinder: Night, Interval and Scan.
