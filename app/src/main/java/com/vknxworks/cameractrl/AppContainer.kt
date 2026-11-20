@@ -10,6 +10,7 @@ import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /** Manual dependency container; one per process. */
@@ -27,6 +28,26 @@ class AppContainer(val context: Context) {
 
     init {
         AppLock.onLocked = { onLocked() }
+        val startedAt = System.currentTimeMillis()
+        appScope.launch(Dispatchers.IO) { clearLeftoverTempFiles(startedAt) }
+    }
+
+    /**
+     * Night shots and timelapses are put together in a temporary file in the cache and deleted once the result
+     * is in the library. If the app was closed in the middle of that, the unfinished file was left behind (it
+     * can be large, and it is a picture or video). Nothing can resume it, so it's deleted at the next start.
+     * Only files last written before this start are touched, so a shot begun right after opening is never hit.
+     */
+    private fun clearLeftoverTempFiles(startedAt: Long) {
+        runCatching {
+            context.cacheDir.listFiles()?.forEach { file ->
+                val name = file.name
+                val leftover = name == "prepare.mp4" ||
+                    (name.startsWith("night-") && name.endsWith(".jpg")) ||
+                    (name.startsWith("CTRL_") && name.endsWith("_TIMELAPSE.mp4"))
+                if (leftover && file.isFile && file.lastModified() < startedAt) file.delete()
+            }
+        }
     }
 
     suspend fun enableLock(pin: String) {

@@ -4,6 +4,14 @@ What changed in each CameraCtrl release. Every release on the [Releases page](ht
 
 To publish a new version: bump `versionCode` and `versionName` in `app/build.gradle.kts`, add a section here, and push to `main`. Pushes without a version bump only build; they don't make a release.
 
+## Unreleased
+
+Not in a release yet: this is on `main` and ships with the next version. Built and checked by CI only, never run on a phone.
+
+### Privacy
+
+- **Unfinished night shots and timelapses no longer stay behind in the cache.** A night shot and a timelapse are put together in a temporary file inside CameraCtrl's private cache, which is deleted as soon as the finished photo or video is in your library. If the app was closed or stopped by Android in the middle of that, the half-finished file stayed there until Android happened to clear the cache; a timelapse can be large. CameraCtrl now deletes these leftovers each time it starts, in the background. Only files from before that start are removed, so a shot you begin right after opening the app is never touched, and nothing in your library changes.
+
 ## v0.2.1 (2026-11-20)
 
 Built and checked by CI only: nothing in this release had been run on a phone when it was published.
