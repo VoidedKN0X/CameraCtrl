@@ -12,6 +12,15 @@ Built and checked by CI only: nothing here has been run on a phone.
 
 - **The camera is opened once at start, not twice.** CameraCtrl's settings are read from storage a moment after the app starts; until then the app works with the defaults (RAW + JPEG, HEVC, quality 95, maximum resolution off). If your settings differ from those and the viewfinder was ready first, the camera was opened with the defaults, closed, and opened again with your settings. The viewfinder now waits for the saved settings before it opens the camera the first time, so it's opened once with the right setup. The wait is normally a few milliseconds. It can't keep the camera closed: if reading the settings fails the defaults are used as before, and if storage hasn't answered after 2 seconds the camera is opened with what there is (and, as before, once more if the saved settings then turn out to be different). Coming back to the viewfinder later, switching lens or mode and changing a setting work exactly as before.
 
+### Security
+
+- **The signing key is no longer available to the build.** Nothing in the app changed. Until now the release key and its passwords were present in the same GitHub Actions job that runs Gradle, so any build plugin or library could in principle have read them. The build job now has no secrets at all and produces an unsigned APK. A separate job, which checks out no code and runs no Gradle, signs it with `apksigner`, and then refuses to hand it on unless it is signed by exactly the certificate published in SECURITY.md and README.md and its contents are identical to what the build job made. Releases are signed with the same key and the same signature scheme (v2) as before, so updates install as usual. The release job itself has not run with the new workflow yet; the next version will be the first.
+- **The build checks that the published fingerprint and the enforced one are the same.** If `build.yml`, SECURITY.md and README.md ever disagree about the signing certificate, the build fails.
+
+### Project
+
+- **Builds no longer use a saved Gradle cache.** Other Ctrl apps had builds fail with "Dependency verification failed ... from repository Gradle Central Plugin Repository", and keep failing until the caches were deleted by hand. The cause (found on DateCtrl): with a restored cache Gradle still fetches the plugin files from Maven Central on every build; when Maven Central can't be reached for a moment, Gradle takes the Kotlin plugin "marker" file from the Gradle plugin portal instead, the portal serves a different file under the same name, verification rightly refuses it, and the failed run then saved that state as the cache for every later run. Now every build and the weekly code scan start from a clean Gradle home, and the plugin portal is no longer a plugin source at all (`settings.gradle.kts`): everything the build needs is on Maven Central and Google's Maven. Dependency verification itself is unchanged and as strict as before. Builds take a little longer.
+
 ## v0.2.2 (2026-11-20)
 
 Built and checked by CI only: nothing in this release had been run on a phone when it was published.

@@ -33,3 +33,5 @@ Every release is built from this repo by GitHub Actions and signed with the same
 ```
 EC:F6:89:5F:2D:0F:7B:C9:1C:12:11:14:DB:3B:22:18:D5:8C:B4:04:48:F7:79:7D:A0:4C:5E:C5:1F:04:1A:1D
 ```
+
+The key never meets the build: the job that runs Gradle (and with it every plugin and library) has no secrets and produces an unsigned APK. A separate job that checks out nothing and runs no build code signs that APK, then refuses to pass it on unless it is signed by exactly this certificate and its contents are unchanged.
