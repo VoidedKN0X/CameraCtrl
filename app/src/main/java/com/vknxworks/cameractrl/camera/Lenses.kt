@@ -7,6 +7,8 @@ import android.graphics.SurfaceTexture
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraManager
 import android.hardware.camera2.CameraMetadata
+import android.hardware.camera2.CaptureRequest
+import android.hardware.camera2.params.DynamicRangeProfiles
 import android.hardware.camera2.params.StreamConfigurationMap
 import android.media.MediaRecorder
 import android.util.Range
@@ -64,6 +66,24 @@ data class Lens(
     val awbModes: List<Int>,
     val zoom: Range<Float>?,
     val flash: Boolean,
+    /** Auto-exposure modes of the camera that is opened (the flash modes are among them when it has a flash). */
+    val aeModes: List<Int>,
+    /** Electronic video stabilisation modes (CONTROL_VIDEO_STABILIZATION_MODE) of the camera that is opened. */
+    val videoStabModes: List<Int>,
+    /** Optical stabilisation modes of this lens. */
+    val oisModes: List<Int>,
+    /** Frame-rate ranges auto exposure can hold, of the camera that is opened. */
+    val fpsRanges: List<Range<Int>>,
+    /** Shortest frame time (ns) of each video size, so a frame rate is only offered where the size can keep up. */
+    val videoMinFrameNs: Map<Size, Long>,
+    /** 10-bit HLG video (DynamicRangeProfiles.HLG10) is offered. */
+    val hlg10: Boolean,
+    /** Largest Ultra HDR (JPEG_R: JPEG with a gain map) size, where the lens offers it. */
+    val ultraHdr: Size?,
+    /** The camera may use zero-shutter-lag for still photos (CONTROL_ENABLE_ZSL is an accepted request key). */
+    val zsl: Boolean,
+    /** Focus distances are in real diopters (approximate or calibrated), so they can be compared between lenses. */
+    val focusCalibrated: Boolean,
     val hardwareLevel: Int,
     /** Active array of the camera that is opened (for tap-to-focus regions). */
     val activeArray: Rect?,
@@ -75,7 +95,18 @@ data class Lens(
     val hasAf: Boolean get() = minFocus > 0f
     val logical: Boolean get() = physicalIds.isNotEmpty()
     val saveableRaws: List<RawProfile> get() = raws.keys.filter { it.saveable }
+    val hasFlashModes: Boolean get() = flash && CameraMetadata.CONTROL_AE_MODE_ON_ALWAYS_FLASH in aeModes
+
+    /** Video frame rates (of [VIDEO_FPS]) this lens can record at [size]: auto exposure can hold it and the size keeps up. */
+    fun videoFps(size: Size?): List<Int> = VIDEO_FPS.filter { fps ->
+        val held = fpsRanges.any { it.lower == fps && it.upper == fps }
+        val minNs = size?.let { videoMinFrameNs[it] } ?: 0L
+        held && (minNs == 0L || minNs <= 1_000_000_000L / fps + 50_000L)
+    }
 }
+
+/** Frame rates offered for video, where the lens allows them. */
+val VIDEO_FPS = listOf(24, 30, 60)
 
 object LensDetector {
     fun detect(context: Context): List<Lens> {
@@ -125,6 +156,15 @@ object LensDetector {
         val sensor = ch.get(CameraCharacteristics.SENSOR_INFO_PHYSICAL_SIZE)
         val equiv = if (sensor != null && focal > 0f) (focal * 43.27f / hypot(sensor.width, sensor.height)).toInt() else 0
         val tenBit = ch.has(CameraMetadata.REQUEST_AVAILABLE_CAPABILITIES_DYNAMIC_RANGE_TEN_BIT)
+        val hlg = tenBit && runCatching {
+            ch.get(CameraCharacteristics.REQUEST_AVAILABLE_DYNAMIC_RANGE_PROFILES)?.supportedProfiles?.contains(DynamicRangeProfiles.HLG10) == true
+        }.getOrDefault(false)
+        val videoSizes = map?.getOutputSizes(MediaRecorder::class.java)?.toList().orEmpty()
+        val videoFrames = HashMap<Size, Long>()
+        if (map != null) for (v in videoSizes) {
+            runCatching { map.getOutputMinFrameDuration(MediaRecorder::class.java, v) }.getOrNull()?.let { videoFrames[v] = it }
+        }
+        val requestKeys = runCatching { opened.availableCaptureRequestKeys }.getOrNull().orEmpty()
         return Lens(
             id = id,
             physicalId = physical,
@@ -141,7 +181,7 @@ object LensDetector {
             jpeg = map?.largest(ImageFormat.JPEG),
             maxResJpeg = maxJpeg,
             previewSizes = map?.getOutputSizes(SurfaceTexture::class.java)?.toList().orEmpty(),
-            videoSizes = map?.getOutputSizes(MediaRecorder::class.java)?.toList().orEmpty(),
+            videoSizes = videoSizes,
             yuvSizes = map?.getOutputSizes(ImageFormat.YUV_420_888)?.toList().orEmpty(),
             tenBit = tenBit,
             manualSensor = ch.has(CameraMetadata.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_SENSOR),
@@ -154,6 +194,17 @@ object LensDetector {
             // Zoom ratio only applies to the camera that is opened as a whole, not to one physical lens.
             zoom = if (physical == null) opened.get(CameraCharacteristics.CONTROL_ZOOM_RATIO_RANGE) else null,
             flash = opened.get(CameraCharacteristics.FLASH_INFO_AVAILABLE) == true,
+            aeModes = opened.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_MODES)?.toList().orEmpty(),
+            videoStabModes = opened.get(CameraCharacteristics.CONTROL_AVAILABLE_VIDEO_STABILIZATION_MODES)?.toList().orEmpty(),
+            oisModes = ch.get(CameraCharacteristics.LENS_INFO_AVAILABLE_OPTICAL_STABILIZATION)?.toList().orEmpty(),
+            fpsRanges = opened.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES)?.toList().orEmpty(),
+            videoMinFrameNs = videoFrames,
+            hlg10 = hlg,
+            ultraHdr = map?.largest(ImageFormat.JPEG_R),
+            zsl = CaptureRequest.CONTROL_ENABLE_ZSL in requestKeys,
+            focusCalibrated = ch.get(CameraCharacteristics.LENS_INFO_FOCUS_DISTANCE_CALIBRATION).let {
+                it == CameraMetadata.LENS_INFO_FOCUS_DISTANCE_CALIBRATION_APPROXIMATE || it == CameraMetadata.LENS_INFO_FOCUS_DISTANCE_CALIBRATION_CALIBRATED
+            },
             hardwareLevel = ch.get(CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL) ?: -1,
             activeArray = active,
             chars = ch,

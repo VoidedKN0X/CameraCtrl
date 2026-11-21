@@ -19,10 +19,19 @@ Part of the [Ctrl series](#the-ctrl-series) by VKNXWorks.
 - **Camera modes page:** everything your phone reports for each lens: sensor size and pixel count, colour filter, RAW profiles and sizes, maximum resolution mode, JPEG and video sizes, 10-bit HDR, ISO and shutter ranges, closest focus and Camera2 level
 - **Pro controls:** manual ISO and shutter speed (down to the lens's longest exposure), manual focus, white balance presets and exposure compensation
 - **Tap to focus**, rule-of-thirds grid, self-timer (3 or 10 s), torch
+- **Flash for photos:** off, automatic or on, on lenses with a flash. With automatic exposure the camera measures with a pre-flash first; with manual exposure the flash fires once in the photo
+- **Volume keys as the shutter:** either volume key takes a photo, or starts and stops a video, while the viewfinder is open (can be turned off)
+- **Exposure bracketing:** 3 photos ±1 or ±2 EV, or 5 photos ±1 EV, in one press (the **BKT** chip), on lenses with manual exposure. The shutter speed changes first; ISO takes over past a quarter second
+- **Histogram, focus peaking and a level:** a live brightness histogram, violet edges on what's sharp while you focus by hand, and a horizon line that turns violet when the phone is straight
+- **Zero shutter lag and Ultra HDR photos**, on lenses that offer them: the camera can save the moment you pressed, and JPEGs can carry an HDR gain map for brighter highlights on HDR screens
+- **Automatic lens switching for close-ups:** on a single lens, when the subject is closer than that lens can focus, CameraCtrl switches to the lens that focuses closest and back again. It goes by each lens's closest focus as your phone reports it, nothing per phone model
 - **Night mode:** takes a burst of 6 (handheld) or 8 (tripod) photos, lines them up and merges them into one JPEG with much less noise. It's a multi-frame merge, not one long exposure, and the app says so; RAW stays in Photo mode
 - **Interval shooting and timelapses:** a photo every 1 s to 10 min, for a number of shots, a length of time or until you stop. Keep every photo, or let CameraCtrl build a timelapse video (30 fps, HEVC or H.264) on the phone. The run goes on with the screen dimmed or off
 - **QR code and barcode scanner:** reads QR, Data Matrix, Aztec, PDF417 and the common barcodes on the phone. Copy or share what it says; links open only when you tap Open, with the full address shown; Wi-Fi codes open Android's own add-network screen (or copy the password)
-- **Video** in 4K or 1080p, HEVC or H.264, with sound if you allow the microphone
+- **Video** in 4K or 1080p, HEVC or H.264, with sound if you allow the microphone. **24, 30 or 60 fps**, **stabilisation** and **10-bit HDR (HLG)**, each where the lens offers it at that resolution; the line under the viewfinder shows what is used
+- **A photo for other apps:** when a chat, form or other app asks for "take a photo", CameraCtrl takes it, lets you check it (Use photo or Retake) and hands it to that app only; it isn't saved in your library
+- **From the lock screen without unlocking:** the lock-screen camera (for example a double press of the power key) opens CameraCtrl over the lock screen with only the viewfinder and the photos you take then. Settings, the camera modes page, QR scanning, interval shooting and your older photos need the phone unlocked
+- **Settings export and import:** save your photo, viewfinder and video settings to a file and use it again later or on another phone. The app lock and privacy settings are never in it
 - **Formats:** RAW + JPEG, RAW only or JPEG only, with JPEG quality 90 to 100 %
 - **No location, ever:** CameraCtrl doesn't have the location permission
 - **App lock** with its own PIN and optional fingerprint unlock, and **Hide in screenshots** / **Hide in recent apps** (all off until you turn them on)
@@ -53,7 +62,8 @@ Android lets each phone maker decide which camera modes other apps may use. Came
 - **Lenses:** the row above the shutter: **AUTO** is the phone's multi-camera (pinch to zoom), the numbers are the single lenses.
 - **Pro:** tap **PRO** for ISO, shutter, focus, white balance and EV. **AUTO** gives exposure back to the camera.
 - **Camera modes:** the info button at the top shows what each lens offers.
-- **Settings** (profile picture): format, RAW profile, maximum resolution, JPEG quality, timer, grid, shutter sound, video resolution and codec, and privacy.
+- **Flash:** the flash button at the top cycles off, automatic and on (Photo mode). **BKT** turns on exposure bracketing and picks how many photos.
+- **Settings** (profile picture): format, RAW profile, maximum resolution, JPEG quality, timer, grid, shutter sound, volume keys, zero shutter lag, Ultra HDR, close-up switching, histogram, focus peaking, level, video resolution, frame rate, codec, stabilisation and HDR, the settings file, and privacy.
 
 Photos are saved in **DCIM/CameraCtrl**, videos in **Movies/CameraCtrl**.
 
@@ -104,7 +114,11 @@ Turn the app lock on under **Settings > Privacy and security > App lock**. It's 
 
 - Photos and videos are written straight into your library on the phone. CameraCtrl keeps no copies of its own.
 - **No location** is ever saved in your photos: CameraCtrl can't read your location at all.
-- The camera is only open while the viewfinder is on screen; it closes when you leave the app. The one exception is an interval run you start yourself: it keeps the camera until the run ends or you stop it, with Android's foreground-service notice showing that the camera is in use.
+- The camera is only open while the viewfinder is on screen; it closes when you leave the app.
+- The lock-screen camera has no app lock of its own because it shows nothing you took before: only the viewfinder and the photos from that visit. A photo opens in your gallery only after you unlock, and the lock-screen camera closes when the screen turns off. Everything else in CameraCtrl still asks for the app lock.
+- A photo taken for another app goes only to that app (to the place it asked for, or as a small picture in the reply) and isn't saved in your library.
+- A settings file holds only camera settings (no app lock, no privacy settings) and is saved only where you choose.
+- The level uses the phone's motion sensor, which needs no permission, only while the level is on and the viewfinder is open. The one exception is an interval run you start yourself: it keeps the camera until the run ends or you stop it, with Android's foreground-service notice showing that the camera is in use.
 - Night mode and the timelapse video are made on the phone. The QR scanner decodes codes on the phone with ZXing; nothing is looked up online, and a link only opens in your browser when you tap Open.
 - Settings are in CameraCtrl's private storage. Android backups don't include them, and CameraCtrl is left out of Android's cloud backup and its phone-to-phone transfer.
 - The Support, Report a bug, Source code and Licence links on the You page open in your browser, only when you tap them.

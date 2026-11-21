@@ -1,6 +1,7 @@
 package com.vknxworks.cameractrl.ui.camera
 
 import android.Manifest
+import android.app.KeyguardManager
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.graphics.Bitmap
@@ -45,6 +46,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Cameraswitch
+import androidx.compose.material.icons.outlined.FlashAuto
+import androidx.compose.material.icons.outlined.FlashOff
+import androidx.compose.material.icons.outlined.FlashOn
 import androidx.compose.material.icons.outlined.FlashlightOff
 import androidx.compose.material.icons.outlined.FlashlightOn
 import androidx.compose.material.icons.outlined.Grid3x3
@@ -71,6 +75,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -79,6 +84,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -96,7 +102,12 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.vknxworks.cameractrl.R
+import com.vknxworks.cameractrl.camera.Bracket
 import com.vknxworks.cameractrl.camera.CameraController
+import com.vknxworks.cameractrl.camera.CloseUp
+import com.vknxworks.cameractrl.camera.CloseUpTracker
+import com.vknxworks.cameractrl.camera.FlashMode
+import com.vknxworks.cameractrl.camera.FocusLens
 import com.vknxworks.cameractrl.camera.Lens
 import com.vknxworks.cameractrl.camera.LensDetector
 import com.vknxworks.cameractrl.camera.Manual
@@ -133,15 +144,32 @@ internal val Ink = Color(0xFFF2F2EE)
 internal val Dim = Color(0xB3F2F2EE)
 internal val Scrim = Color(0x66000000)
 
+/**
+ * How the viewfinder was opened. Normally (from the launcher, or another app's "open the camera") everything is
+ * there. From the lock screen ([secure]) and for another app's single photo ([onPhoto]) it is restricted: no
+ * You page or Settings, no camera modes page, no photos from before, and only the modes that make sense.
+ */
+class CameraLaunch(val secure: Boolean = false, val onPhoto: ((ByteArray) -> Unit)? = null) {
+    val restricted: Boolean get() = secure || onPhoto != null
+
+    /** The modes offered: one photo for another app; photo, night and video from the lock screen; else all. */
+    val modes: List<Mode>
+        get() = when {
+            onPhoto != null -> listOf(Mode.PHOTO)
+            secure -> listOf(Mode.PHOTO, Mode.NIGHT, Mode.VIDEO)
+            else -> Mode.entries.toList()
+        }
+}
+
 @Composable
-fun CameraScreen() {
+fun CameraScreen(launch: CameraLaunch = CameraLaunch()) {
     val context = LocalContext.current
     var granted by remember { mutableStateOf(context.hasPermission(Manifest.permission.CAMERA)) }
     val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted = it }
     if (!granted) {
         LaunchedEffect(Unit) { ask.launch(Manifest.permission.CAMERA) }
         Column(Modifier.fillMaxSize().statusBarsPadding()) {
-            Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.End) { ProfileButton() }
+            Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.End) { if (!launch.restricted) ProfileButton() }
             MessageView(
                 Icons.Outlined.PhotoCamera,
                 stringResource(R.string.cam_permission_title),
@@ -168,25 +196,32 @@ fun CameraScreen() {
     }
     // An interval run has the camera (in its foreground service): show the run, not the viewfinder.
     val run by context.container.interval.state.collectAsStateWithLifecycle()
-    var mode by rememberSaveable { mutableStateOf(Mode.PHOTO) }
+    var chosenMode by rememberSaveable { mutableStateOf(Mode.PHOTO) }
     if (run.active) {
-        IntervalRunScreen(run, onStop = { context.container.interval.stop() })
+        // The run screen shows its last shot, so not from the lock screen or for another app's photo.
+        if (launch.restricted) MessageView(Icons.Outlined.Timelapse, stringResource(R.string.interval_busy_restricted))
+        else IntervalRunScreen(run, onStop = { context.container.interval.stop() })
         return
     }
-    Viewfinder(lenses, mode, run) { mode = it }
+    val mode = if (chosenMode in launch.modes) chosenMode else Mode.PHOTO
+    Viewfinder(lenses, mode, run, launch) { chosenMode = it }
 }
 
 @Composable
-private fun Viewfinder(lenses: List<Lens>, mode: Mode, run: IntervalState, setMode: (Mode) -> Unit) {
+private fun Viewfinder(lenses: List<Lens>, mode: Mode, run: IntervalState, launch: CameraLaunch, setMode: (Mode) -> Unit) {
     val context = LocalContext.current
     val c = context.container
-    val nav = LocalNavigator.current
+    // No navigation from the lock screen or for another app's photo (those windows have no You page or Settings).
+    val nav = if (launch.restricted) null else LocalNavigator.current
     val scope = rememberCoroutineScope()
     val settings by c.settings.settings.collectAsStateWithLifecycle()
     val controller = remember { CameraController(context.applicationContext) }
     val cam by controller.state.collectAsStateWithLifecycle()
     DisposableEffect(Unit) { onDispose { controller.release() } }
     controller.shutterSound = settings.shutterSound
+    controller.zslAllowed = settings.zsl
+    LaunchedEffect(settings.flash) { controller.setFlash(settings.flash) }
+    val photoForApp = launch.onPhoto != null
 
     // A camera is held upright; the controls stay put and saved photos get the right orientation.
     val activity = context.findActivity()
@@ -208,15 +243,26 @@ private fun Viewfinder(lenses: List<Lens>, mode: Mode, run: IntervalState, setMo
     var lensKey by rememberSaveable { mutableStateOf<String?>(null) }
     var pro by rememberSaveable { mutableStateOf(false) }
     var manual by remember { mutableStateOf(Manual()) }
+    /** The lens CameraCtrl switched away from for a close-up (it switches back when the subject is farther again). */
+    var closeUpFrom by rememberSaveable { mutableStateOf<String?>(null) }
+    /** Another app's photo, waiting for "Use photo" or "Retake". */
+    var review by remember { mutableStateOf<ByteArray?>(null) }
 
     val group = lenses.filter { (it.facing == CameraMetadata.LENS_FACING_FRONT) == front }.ifEmpty { lenses }
     val lens = group.firstOrNull { it.key == lensKey } ?: group.firstOrNull { it.logical } ?: group.first()
-    val maxRes = settings.maxRes && lens.supportsMaxRes && mode == Mode.PHOTO
-    // Only Photo saves RAW; night, interval and scan work with JPEG (or nothing at all).
-    val raw = if (mode == Mode.PHOTO) lens.resolveRaw(settings.rawProfile, maxRes) else null
-    val format = if (mode == Mode.PHOTO) settings.format else PhotoFormat.JPEG
+    val maxRes = !photoForApp && settings.maxRes && lens.supportsMaxRes && mode == Mode.PHOTO
+    // Only Photo saves RAW; night, interval and scan work with JPEG (or nothing at all). A photo for another app is a JPEG.
+    val raw = if (mode == Mode.PHOTO && !photoForApp) lens.resolveRaw(settings.rawProfile, maxRes) else null
+    val format = if (mode == Mode.PHOTO && !photoForApp) settings.format else PhotoFormat.JPEG
     val videoSize = remember(lens, settings.videoUhd) { chooseVideo(lens, settings.videoUhd) }
-    val setup = Setup(lens, mode, format, raw, maxRes, videoSize, settings.hevc, settings.jpegQuality)
+    val setup = Setup(
+        lens, mode, format, raw, maxRes, videoSize, settings.hevc, settings.jpegQuality,
+        ultraHdr = settings.ultraHdr && !photoForApp,
+        hdrVideo = settings.hdrVideo,
+        fps = settings.videoFps,
+        stabilization = settings.stabilization,
+    )
+    val bracketOn = mode == Mode.PHOTO && !photoForApp && settings.bracket != Bracket.OFF && lens.manualSensor
 
     var texture by remember { mutableStateOf<SurfaceTexture?>(null) }
     var resumed by remember { mutableStateOf(true) }
@@ -246,7 +292,8 @@ private fun Viewfinder(lenses: List<Lens>, mode: Mode, run: IntervalState, setMo
 
     val askAudio = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
     LaunchedEffect(mode) {
-        if (mode == Mode.VIDEO && !context.hasPermission(Manifest.permission.RECORD_AUDIO)) askAudio.launch(Manifest.permission.RECORD_AUDIO)
+        // Not from the lock screen: Android's permission question would need the phone unlocked first.
+        if (mode == Mode.VIDEO && !launch.secure && !context.hasPermission(Manifest.permission.RECORD_AUDIO)) askAudio.launch(Manifest.permission.RECORD_AUDIO)
     }
 
     var countdown by remember { mutableIntStateOf(0) }
@@ -256,7 +303,7 @@ private fun Viewfinder(lenses: List<Lens>, mode: Mode, run: IntervalState, setMo
     fun startInterval() {
         val plan = IntervalPlan(settings.intervalSeconds * 1000L, settings.intervalStop)
         val config = IntervalConfig(
-            setup = setup.copy(mode = Mode.INTERVAL, format = PhotoFormat.JPEG, raw = null, maxRes = false),
+            setup = setup.copy(mode = Mode.INTERVAL, format = PhotoFormat.JPEG, raw = null, maxRes = false, ultraHdr = false),
             manual = manual,
             orientation = controller.orientation,
             plan = plan,
@@ -277,8 +324,16 @@ private fun Viewfinder(lenses: List<Lens>, mode: Mode, run: IntervalState, setMo
             Mode.SCAN -> return
             else -> Unit
         }
-        if (cam.busy || countdown > 0) return
-        val take = { if (mode == Mode.NIGHT) controller.captureNight(settings.nightPreset) else controller.capture() }
+        if (cam.busy || countdown > 0 || review != null) return
+        val take = {
+            when {
+                mode == Mode.NIGHT -> controller.captureNight(settings.nightPreset)
+                photoForApp -> scope.launch { controller.captureShot(save = false)?.let { review = it.jpeg } }
+                bracketOn -> controller.captureBracket(settings.bracket)
+                else -> controller.capture()
+            }
+            Unit
+        }
         if (settings.timer > 0) {
             scope.launch {
                 for (i in settings.timer downTo 1) { countdown = i; delay(1000) }
@@ -287,6 +342,58 @@ private fun Viewfinder(lenses: List<Lens>, mode: Mode, run: IntervalState, setMo
             }
         } else take()
     }
+
+    // ---------- Volume keys ----------
+    val keyOwner = remember { Any() }
+    val keysOn = settings.volumeShutter && resumed && mode != Mode.SCAN && review == null
+    val onKey by rememberUpdatedState { if (cam.ready || cam.recording) shoot() }
+    DisposableEffect(keysOn) {
+        if (keysOn) ShutterKeys.owner = keyOwner
+        onDispose { if (ShutterKeys.owner === keyOwner) ShutterKeys.owner = null }
+    }
+    LaunchedEffect(keysOn) {
+        if (keysOn) ShutterKeys.presses.collect { onKey() }
+    }
+
+    // ---------- Close-ups ----------
+    // On a single lens, when autofocus sits at the lens's closest distance and the picture isn't sharp, switch to
+    // the lens that focuses closest (by the minimum focus distance the phone reports), and back when the subject
+    // is far enough again. The AUTO multi-camera does this itself.
+    val closeUpOn = settings.closeUpSwitch && !lens.logical && lens.hasAf && manual.focus == null && cam.ready &&
+        !cam.recording && !cam.busy && mode != Mode.INTERVAL
+    LaunchedEffect(lens.key, closeUpOn, closeUpFrom) {
+        if (!closeUpOn) return@LaunchedEffect
+        val from = closeUpFrom?.let { k -> group.firstOrNull { it.key == k } }
+        val target = if (from == null) CloseUp.closerLens(lens.focusLens(), group.filter { !it.logical && it.hasAf }.map { it.focusLens() }) else null
+        if (from == null && target == null) return@LaunchedEffect
+        val tracker = CloseUpTracker()
+        // Give autofocus a moment on the newly opened lens first.
+        delay(1_500)
+        while (true) {
+            delay(200)
+            val d = controller.focusDiopters
+            val af = controller.afState
+            val sharp = af == CameraMetadata.CONTROL_AF_STATE_PASSIVE_FOCUSED || af == CameraMetadata.CONTROL_AF_STATE_FOCUSED_LOCKED
+            val now = SystemClock.elapsedRealtime()
+            if (from != null) {
+                if (tracker.farEnough(now, d, sharp, from.minFocus)) {
+                    closeUpFrom = null
+                    lensKey = from.key
+                    break
+                }
+            } else if (target != null && tracker.tooClose(now, d, sharp, lens.minFocus)) {
+                closeUpFrom = lens.key
+                lensKey = target.key
+                break
+            }
+        }
+    }
+
+    // ---------- Histogram, focus peaking, level ----------
+    var textureView by remember { mutableStateOf<TextureView?>(null) }
+    val peakingOn = settings.peaking && manual.focus != null && lens.hasAf && mode != Mode.SCAN
+    val aids = rememberFrameAids(textureView, settings.histogram && mode != Mode.SCAN, peakingOn, cam.ready)
+    val tilt = rememberTilt(settings.level && mode != Mode.SCAN && resumed)
 
     // The last interval run's result, shown for a moment.
     LaunchedEffect(run.resultUri, run.error, run.resultShots) {
@@ -304,23 +411,38 @@ private fun Viewfinder(lenses: List<Lens>, mode: Mode, run: IntervalState, setMo
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                if (mode == Mode.PHOTO) {
-                    val label = when (settings.format) {
-                        PhotoFormat.JPEG -> stringResource(R.string.fmt_jpeg)
-                        PhotoFormat.RAW_JPEG -> stringResource(R.string.fmt_raw_jpeg)
-                        PhotoFormat.RAW -> stringResource(R.string.fmt_raw)
-                    }
-                    Pill(label, active = settings.format != PhotoFormat.JPEG && raw != null) {
-                        val next = PhotoFormat.entries[(settings.format.ordinal + 1) % PhotoFormat.entries.size]
-                        scope.launch { c.settings.update { it.copy(format = next) } }
-                    }
-                    if (lens.supportsMaxRes) {
-                        Pill(stringResource(R.string.max_res), active = settings.maxRes) {
-                            scope.launch { c.settings.update { it.copy(maxRes = !it.maxRes) } }
+                Row(
+                    Modifier.weight(1f).horizontalScroll(rememberScrollState()),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    if (mode == Mode.PHOTO && !photoForApp) {
+                        val label = when (settings.format) {
+                            PhotoFormat.JPEG -> stringResource(R.string.fmt_jpeg)
+                            PhotoFormat.RAW_JPEG -> stringResource(R.string.fmt_raw_jpeg)
+                            PhotoFormat.RAW -> stringResource(R.string.fmt_raw)
+                        }
+                        Pill(label, active = settings.format != PhotoFormat.JPEG && raw != null) {
+                            val next = PhotoFormat.entries[(settings.format.ordinal + 1) % PhotoFormat.entries.size]
+                            scope.launch { c.settings.update { it.copy(format = next) } }
+                        }
+                        if (lens.supportsMaxRes) {
+                            Pill(stringResource(R.string.max_res), active = settings.maxRes) {
+                                scope.launch { c.settings.update { it.copy(maxRes = !it.maxRes) } }
+                            }
+                        }
+                        if (lens.manualSensor) {
+                            val b = settings.bracket
+                            Pill(
+                                if (b == Bracket.OFF) stringResource(R.string.bracket_pill) else stringResource(R.string.bracket_pill_on, b.shots, b.stepEv),
+                                active = b != Bracket.OFF,
+                            ) {
+                                val next = Bracket.entries[(b.ordinal + 1) % Bracket.entries.size]
+                                scope.launch { c.settings.update { it.copy(bracket = next) } }
+                            }
                         }
                     }
                 }
-                Spacer(Modifier.weight(1f))
                 if (mode == Mode.PHOTO || mode == Mode.NIGHT) {
                     IconToggle(if (settings.timer > 0) Icons.Outlined.Timer else Icons.Outlined.TimerOff, stringResource(R.string.timer), settings.timer > 0, badge = settings.timer.takeIf { it > 0 }?.toString()) {
                         val next = when (settings.timer) { 0 -> 3; 3 -> 10; else -> 0 }
@@ -330,13 +452,27 @@ private fun Viewfinder(lenses: List<Lens>, mode: Mode, run: IntervalState, setMo
                 IconToggle(if (settings.grid) Icons.Outlined.Grid3x3 else Icons.Outlined.GridOff, stringResource(R.string.grid), settings.grid) {
                     scope.launch { c.settings.update { it.copy(grid = !it.grid) } }
                 }
+                if (mode == Mode.PHOTO && lens.hasFlashModes) {
+                    val f = settings.flash
+                    val autoOk = CameraMetadata.CONTROL_AE_MODE_ON_AUTO_FLASH in lens.aeModes
+                    IconToggle(
+                        when (f) { FlashMode.OFF -> Icons.Outlined.FlashOff; FlashMode.AUTO -> Icons.Outlined.FlashAuto; FlashMode.ON -> Icons.Outlined.FlashOn },
+                        stringResource(when (f) { FlashMode.OFF -> R.string.flash_off; FlashMode.AUTO -> R.string.flash_auto; FlashMode.ON -> R.string.flash_on }),
+                        f != FlashMode.OFF,
+                    ) {
+                        val next = when (f) { FlashMode.OFF -> if (autoOk) FlashMode.AUTO else FlashMode.ON; FlashMode.AUTO -> FlashMode.ON; FlashMode.ON -> FlashMode.OFF }
+                        scope.launch { c.settings.update { it.copy(flash = next) } }
+                    }
+                }
                 if (lens.flash) {
                     IconToggle(if (manual.torch) Icons.Outlined.FlashlightOn else Icons.Outlined.FlashlightOff, stringResource(R.string.torch), manual.torch) {
                         manual = manual.copy(torch = !manual.torch)
                     }
                 }
-                IconToggle(Icons.Outlined.Info, stringResource(R.string.modes_title), false) { nav.navigate(ModesRoute) }
-                ProfileButton()
+                if (!launch.restricted) {
+                    IconToggle(Icons.Outlined.Info, stringResource(R.string.modes_title), false) { nav?.navigate(ModesRoute) }
+                    ProfileButton()
+                }
             }
 
             // ---------- Preview ----------
@@ -349,7 +485,7 @@ private fun Viewfinder(lenses: List<Lens>, mode: Mode, run: IntervalState, setMo
                 Box(Modifier.fillMaxWidth().aspectRatio(ratio, matchHeightConstraintsFirst = false)) {
                     AndroidView(
                         factory = { ctx ->
-                            TextureView(ctx).apply {
+                            TextureView(ctx).also { textureView = it }.apply {
                                 keepScreenOn = true
                                 surfaceTextureListener = object : TextureView.SurfaceTextureListener {
                                     override fun onSurfaceTextureAvailable(st: SurfaceTexture, w: Int, h: Int) { texture = st }
@@ -361,7 +497,11 @@ private fun Viewfinder(lenses: List<Lens>, mode: Mode, run: IntervalState, setMo
                         },
                         modifier = Modifier.fillMaxSize(),
                     )
+                    aids.peaking?.let { p ->
+                        Image(p.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.FillBounds, filterQuality = FilterQuality.None)
+                    }
                     if (settings.grid && mode != Mode.SCAN) GridOverlay()
+                    tilt?.let { LevelOverlay(it) }
                     if (mode == Mode.SCAN) ScanFrame()
                     Box(
                         Modifier.fillMaxSize()
@@ -378,8 +518,11 @@ private fun Viewfinder(lenses: List<Lens>, mode: Mode, run: IntervalState, setMo
                     if (countdown > 0) {
                         Text(countdown.toString(), style = CtrlType.Hero, color = Ink, modifier = Modifier.align(Alignment.Center))
                     }
+                    aids.histogram?.let { h -> Histogram(h, Modifier.align(Alignment.TopStart).padding(10.dp)) }
                     Column(Modifier.align(Alignment.TopCenter).padding(top = 10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         if (cam.recording) RecordingClock(cam.recordStart)
+                        if (cam.bracketTotal > 0) Tag(stringResource(R.string.bracket_progress, cam.bracketDone + 1, cam.bracketTotal), CtrlColors.Accent.copy(alpha = 0.85f))
+                        if (closeUpFrom != null && !lens.logical) Tag(stringResource(R.string.closeup_active), Scrim)
                         cam.error?.let { e -> Tag(stringResource(e), Color(0xCCB3261E)) }
                         if (mode == Mode.PHOTO && settings.format != PhotoFormat.JPEG && raw == null) Tag(stringResource(R.string.no_raw_here), Scrim)
                         if (mode == Mode.NIGHT && cam.nightTotal > 0) {
@@ -405,12 +548,13 @@ private fun Viewfinder(lenses: List<Lens>, mode: Mode, run: IntervalState, setMo
                     Column(Modifier.align(Alignment.BottomCenter).padding(bottom = 10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         if (lens.zoom != null && abs(manual.zoom - 1f) > 0.04f) Tag("%.1f×".format(Locale.US, manual.zoom), Scrim)
                         if (cam.saving.isNotEmpty()) Tag(cam.saving, Scrim)
+                        if (mode == Mode.VIDEO && cam.videoExtras.isNotEmpty()) Tag(cam.videoExtras, Scrim)
                     }
                 }
             }
 
             // ---------- Lenses ----------
-            LensRow(group, lens) { l -> lensKey = l.key }
+            LensRow(group, lens) { l -> lensKey = l.key; closeUpFrom = null }
 
             // ---------- Pro controls, or the mode's own options ----------
             AnimatedVisibility(pro && mode != Mode.SCAN, enter = fadeIn(), exit = fadeOut()) {
@@ -430,12 +574,19 @@ private fun Viewfinder(lenses: List<Lens>, mode: Mode, run: IntervalState, setMo
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 val runResult = run.resultUri
-                if (cam.lastUri == null && runResult != null) LastCapture(runResult, run.resultIsVideo) else LastCapture(cam.lastUri, cam.lastIsVideo)
+                when {
+                    // A photo for another app isn't saved, and from the lock screen only this visit's photos are shown.
+                    photoForApp -> Spacer(Modifier.size(52.dp))
+                    launch.secure -> LastCapture(cam.lastUri, cam.lastIsVideo, secure = true)
+                    cam.lastUri == null && runResult != null -> LastCapture(runResult, run.resultIsVideo)
+                    else -> LastCapture(cam.lastUri, cam.lastIsVideo)
+                }
                 if (mode == Mode.SCAN) Spacer(Modifier.size(78.dp))
                 else Shutter(mode, cam.recording, enabled = cam.ready && !cam.busy, onClick = ::shoot)
                 RoundIcon(Icons.Outlined.Cameraswitch, stringResource(R.string.switch_camera), enabled = !cam.recording && !cam.busy && lenses.any { (it.facing == CameraMetadata.LENS_FACING_FRONT) != front }) {
                     front = !front
                     lensKey = null
+                    closeUpFrom = null
                 }
             }
 
@@ -446,11 +597,14 @@ private fun Viewfinder(lenses: List<Lens>, mode: Mode, run: IntervalState, setMo
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 val free = !cam.recording && !cam.busy
-                ModeTab(stringResource(R.string.mode_photo), mode == Mode.PHOTO, enabled = free) { setMode(Mode.PHOTO) }
-                ModeTab(stringResource(R.string.mode_night), mode == Mode.NIGHT, enabled = free) { setMode(Mode.NIGHT) }
-                ModeTab(stringResource(R.string.mode_video), mode == Mode.VIDEO, enabled = free) { setMode(Mode.VIDEO) }
-                ModeTab(stringResource(R.string.mode_interval), mode == Mode.INTERVAL, enabled = free) { setMode(Mode.INTERVAL) }
-                ModeTab(stringResource(R.string.mode_scan), mode == Mode.SCAN, enabled = free) { setMode(Mode.SCAN) }
+                val offered = launch.modes
+                if (offered.size > 1) {
+                    if (Mode.PHOTO in offered) ModeTab(stringResource(R.string.mode_photo), mode == Mode.PHOTO, enabled = free) { setMode(Mode.PHOTO) }
+                    if (Mode.NIGHT in offered) ModeTab(stringResource(R.string.mode_night), mode == Mode.NIGHT, enabled = free) { setMode(Mode.NIGHT) }
+                    if (Mode.VIDEO in offered) ModeTab(stringResource(R.string.mode_video), mode == Mode.VIDEO, enabled = free) { setMode(Mode.VIDEO) }
+                    if (Mode.INTERVAL in offered) ModeTab(stringResource(R.string.mode_interval), mode == Mode.INTERVAL, enabled = free) { setMode(Mode.INTERVAL) }
+                    if (Mode.SCAN in offered) ModeTab(stringResource(R.string.mode_scan), mode == Mode.SCAN, enabled = free) { setMode(Mode.SCAN) }
+                }
                 if (mode != Mode.SCAN) ModeTab(stringResource(R.string.mode_pro), pro, enabled = true) { pro = !pro }
             }
         }
@@ -460,7 +614,15 @@ private fun Viewfinder(lenses: List<Lens>, mode: Mode, run: IntervalState, setMo
     cam.scanned?.let { found ->
         if (mode == Mode.SCAN) ScanResultSheet(found, onDismiss = { controller.resumeScan() })
     }
+
+    // ---------- Another app's photo: use it or take it again ----------
+    review?.let { bytes ->
+        PhotoReview(bytes, onRetake = { review = null }, onUse = { launch.onPhoto?.invoke(bytes) })
+    }
 }
+
+/** The close-up view of a lens: its key and its closest focus as reported. */
+private fun Lens.focusLens() = FocusLens(key, minFocus, focusCalibrated)
 
 private fun chooseVideo(lens: Lens, uhd: Boolean): Size? {
     val exact = lens.videoSizes.filter { it.width * 9 == it.height * 16 }
@@ -600,7 +762,7 @@ private fun Shutter(mode: Mode, recording: Boolean, enabled: Boolean, onClick: (
 }
 
 @Composable
-private fun LastCapture(uri: android.net.Uri?, video: Boolean) {
+private fun LastCapture(uri: android.net.Uri?, video: Boolean, secure: Boolean = false) {
     val context = LocalContext.current
     var thumb by remember { mutableStateOf<Bitmap?>(null) }
     LaunchedEffect(uri) {
@@ -610,7 +772,18 @@ private fun LastCapture(uri: android.net.Uri?, video: Boolean) {
         Modifier.size(52.dp).clip(CircleShape).background(Color(0x33FFFFFF))
             .clickable(enabled = uri != null) {
                 val u = uri ?: return@clickable
-                context.launch(Intent(Intent.ACTION_VIEW).setDataAndType(u, if (video) "video/*" else "image/*").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
+                val view = Intent(Intent.ACTION_VIEW).setDataAndType(u, if (video) "video/*" else "image/*").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                val activity = context.findActivity()
+                if (secure && activity != null) {
+                    // From the lock screen, the photo opens in your gallery only after you unlock the phone.
+                    context.getSystemService(KeyguardManager::class.java)?.requestDismissKeyguard(activity, object : KeyguardManager.KeyguardDismissCallback() {
+                        override fun onDismissSucceeded() {
+                            context.launch(view)
+                        }
+                    }) ?: context.launch(view)
+                } else {
+                    context.launch(view)
+                }
             },
         contentAlignment = Alignment.Center,
     ) {

@@ -8,7 +8,16 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.BarChart
+import androidx.compose.material.icons.outlined.Bolt
+import androidx.compose.material.icons.outlined.CenterFocusStrong
+import androidx.compose.material.icons.outlined.FilterCenterFocus
 import androidx.compose.material.icons.outlined.Fingerprint
+import androidx.compose.material.icons.outlined.HdrOn
+import androidx.compose.material.icons.outlined.Speed
+import androidx.compose.material.icons.outlined.Straighten
+import androidx.compose.material.icons.outlined.Vibration
+import androidx.compose.material.icons.outlined.VolumeDown
 import androidx.compose.material.icons.outlined.Grid3x3
 import androidx.compose.material.icons.outlined.HighQuality
 import androidx.compose.material.icons.outlined.Image
@@ -34,6 +43,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.vknxworks.cameractrl.R
 import com.vknxworks.cameractrl.camera.PhotoFormat
 import com.vknxworks.cameractrl.camera.RawProfile
+import com.vknxworks.cameractrl.camera.VIDEO_FPS
 import com.vknxworks.cameractrl.container
 import com.vknxworks.cameractrl.data.lock.LockVault
 import com.vknxworks.cameractrl.data.settings.AppSettings
@@ -88,11 +98,24 @@ fun SettingsScreen() {
                 GroupChoice(stringResource(R.string.timer), listOf(0 to stringResource(R.string.timer_off), 3 to "3 s", 10 to "10 s"), settings.timer, icon = Icons.Outlined.Timer) { v -> set { it.copy(timer = v) } }
                 GroupSwitch(stringResource(R.string.grid), stringResource(R.string.grid_sub), settings.grid, Icons.Outlined.Grid3x3) { on -> set { it.copy(grid = on) } }
                 GroupSwitch(stringResource(R.string.shutter_sound), stringResource(R.string.shutter_sound_sub), settings.shutterSound, Icons.Outlined.VolumeUp) { on -> set { it.copy(shutterSound = on) } }
+                GroupSwitch(stringResource(R.string.volume_shutter), stringResource(R.string.volume_shutter_sub), settings.volumeShutter, Icons.Outlined.VolumeDown) { on -> set { it.copy(volumeShutter = on) } }
+                GroupSwitch(stringResource(R.string.zsl), stringResource(R.string.zsl_sub), settings.zsl, Icons.Outlined.Bolt) { on -> set { it.copy(zsl = on) } }
+                GroupSwitch(stringResource(R.string.ultra_hdr), stringResource(R.string.ultra_hdr_sub), settings.ultraHdr, Icons.Outlined.HdrOn) { on -> set { it.copy(ultraHdr = on) } }
+                GroupSwitch(stringResource(R.string.closeup_switch), stringResource(R.string.closeup_switch_sub), settings.closeUpSwitch, Icons.Outlined.CenterFocusStrong) { on -> set { it.copy(closeUpSwitch = on) } }
             }
-            Group(stringResource(R.string.group_video)) {
+            Group(stringResource(R.string.group_viewfinder), footer = stringResource(R.string.viewfinder_footer)) {
+                GroupSwitch(stringResource(R.string.histogram), stringResource(R.string.histogram_sub), settings.histogram, Icons.Outlined.BarChart) { on -> set { it.copy(histogram = on) } }
+                GroupSwitch(stringResource(R.string.peaking), stringResource(R.string.peaking_sub), settings.peaking, Icons.Outlined.FilterCenterFocus) { on -> set { it.copy(peaking = on) } }
+                GroupSwitch(stringResource(R.string.level), stringResource(R.string.level_sub), settings.level, Icons.Outlined.Straighten) { on -> set { it.copy(level = on) } }
+            }
+            Group(stringResource(R.string.group_video), footer = stringResource(R.string.video_footer)) {
                 GroupChoice(stringResource(R.string.video_quality), listOf(true to "4K (2160p)", false to "1080p"), settings.videoUhd, icon = Icons.Outlined.Videocam) { v -> set { it.copy(videoUhd = v) } }
+                GroupChoice(stringResource(R.string.video_fps), VIDEO_FPS.map { it to stringResource(R.string.fps_value, it) }, settings.videoFps, icon = Icons.Outlined.Speed) { v -> set { it.copy(videoFps = v) } }
                 GroupChoice(stringResource(R.string.video_codec), listOf(true to stringResource(R.string.codec_hevc), false to stringResource(R.string.codec_avc)), settings.hevc, icon = Icons.Outlined.Movie) { v -> set { it.copy(hevc = v) } }
+                GroupSwitch(stringResource(R.string.stabilization), stringResource(R.string.stabilization_sub), settings.stabilization, Icons.Outlined.Vibration) { on -> set { it.copy(stabilization = on) } }
+                GroupSwitch(stringResource(R.string.hdr_video), stringResource(R.string.hdr_video_sub), settings.hdrVideo, Icons.Outlined.HdrOn) { on -> set { it.copy(hdrVideo = on) } }
             }
+            BackupGroup()
             PrivacyAndSecurityGroup(settings)
         }
     }

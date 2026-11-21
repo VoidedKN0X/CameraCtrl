@@ -12,6 +12,8 @@ import android.hardware.camera2.CameraManager
 import android.hardware.camera2.CameraMetadata
 import android.hardware.camera2.CaptureFailure
 import android.hardware.camera2.CaptureRequest
+import android.hardware.camera2.CaptureResult
+import android.hardware.camera2.params.DynamicRangeProfiles
 import android.hardware.camera2.TotalCaptureResult
 import android.hardware.camera2.params.MeteringRectangle
 import android.hardware.camera2.params.OutputConfiguration
@@ -20,6 +22,7 @@ import android.media.Image
 import android.media.ImageReader
 import android.media.MediaActionSound
 import android.media.MediaCodec
+import android.media.MediaCodecInfo
 import android.media.MediaRecorder
 import android.net.Uri
 import android.os.Handler
@@ -55,6 +58,9 @@ import kotlin.math.min
 
 enum class PhotoFormat { JPEG, RAW_JPEG, RAW }
 
+/** Flash for photos. AUTO lets auto exposure decide; ON fires for every photo. The torch is separate. */
+enum class FlashMode { OFF, AUTO, ON }
+
 /**
  * What the session is set up for. NIGHT: preview plus a full-size YUV stream for the burst. SCAN: preview
  * plus a small YUV stream for the code reader. INTERVAL: JPEG only (the run itself is in IntervalRunner).
@@ -84,6 +90,14 @@ data class Setup(
     val videoSize: Size?,
     val hevc: Boolean,
     val jpegQuality: Int,
+    /** Ultra HDR (JPEG_R) instead of plain JPEG, where the lens offers it and the outputs can be combined. */
+    val ultraHdr: Boolean = false,
+    /** Video: 10-bit HLG (HEVC only), where the lens offers it. */
+    val hdrVideo: Boolean = false,
+    /** Video frame rate; only used when the lens can hold it (see [Lens.videoFps]). */
+    val fps: Int = 30,
+    /** Video: optical and electronic stabilisation, where offered. */
+    val stabilization: Boolean = true,
 )
 
 data class CamState(
@@ -103,6 +117,11 @@ data class CamState(
     val lastNightMerged: Int = 0,
     /** Scan mode: the code that was found (scanning pauses until [CameraController.resumeScan]). */
     val scanned: Scanned? = null,
+    /** Bracketing: shots of the series taken so far, out of [bracketTotal] (0 when no series is running). */
+    val bracketDone: Int = 0,
+    val bracketTotal: Int = 0,
+    /** What the open video session actually records with (frame rate, HDR, stabilisation), for the status line. */
+    val videoExtras: String = "",
 )
 
 /** One interval shot: where it was saved (null when it wasn't), and the JPEG itself. */
@@ -140,9 +159,25 @@ class CameraController(private val context: Context) {
     private var pending: Pending? = null
     private var openToken = 0
 
-    /** What auto exposure chose for the last preview frame (night mode starts from it). */
+    /** What auto exposure chose for the last preview frame (night mode and bracketing start from it). */
     @Volatile private var lastAeNs = 0L
     @Volatile private var lastAeIso = 0
+
+    /** The last preview frame's focus distance (diopters) and autofocus state, for close-up lens switching. */
+    @Volatile var focusDiopters = -1f
+        private set
+    @Volatile var afState = -1
+        private set
+    /** Set (on the camera thread) while a flash photo waits for the precapture metering to finish. */
+    private var precapture: Precapture? = null
+    /** Photo mode flash; read when a photo is taken. */
+    @Volatile var flashMode = FlashMode.OFF
+    /** Let the camera use zero-shutter-lag for photos (where the lens offers it). */
+    @Volatile var zslAllowed = true
+    /** Whether the open session really saves Ultra HDR / records HLG (it falls back when the outputs can't be combined). */
+    private var ultraHdrActive = false
+    private var hdrVideoActive = false
+    @Volatile private var bracketRunning = false
 
     private var night: NightJob? = null
 
@@ -174,7 +209,22 @@ class CameraController(private val context: Context) {
         }
     }
 
-    private class Pending(val wantJpeg: Boolean, val wantRaw: Boolean, val saveJpeg: Boolean, val onShot: ((Shot?) -> Unit)?) {
+    private class Precapture(val run: () -> Unit) {
+        /** The trigger request has been processed; only later frames say anything about the metering. */
+        var triggered = false
+        var started = false
+        var framesAfter = 0
+        var done = false
+    }
+
+    private class Pending(
+        val wantJpeg: Boolean,
+        val wantRaw: Boolean,
+        val saveJpeg: Boolean,
+        val onShot: ((Shot?) -> Unit)?,
+        val name: String? = null,
+        val onDone: ((Boolean) -> Unit)? = null,
+    ) {
         val result = CompletableDeferred<TotalCaptureResult>()
         val jpeg = CompletableDeferred<Image>()
         val raw = CompletableDeferred<Image>()
@@ -253,13 +303,66 @@ class CameraController(private val context: Context) {
     private fun createSession(s: Setup) {
         val d = device ?: return
         val preview = previewSurface ?: return
+        var built = buildOutputs(s, preview, ultra = s.ultraHdr, hlg = s.hdrVideo)
+        // Ultra HDR and 10-bit HDR aren't possible with every combination of outputs. When Android says this one
+        // isn't, the session is built without them (plain JPEG, 8-bit video) instead of failing.
+        if ((ultraHdrActive || hdrVideoActive) && supported(d, built.first) == false) {
+            closeReaders()
+            built = buildOutputs(s, preview, ultra = false, hlg = false)
+        }
+        val (outs, saving) = built
+        state.update { it.copy(saving = saving, videoExtras = videoExtras(s)) }
+        try {
+            d.createCaptureSession(SessionConfiguration(SessionConfiguration.SESSION_REGULAR, outs, executor, object : CameraCaptureSession.StateCallback() {
+                override fun onConfigured(sess: CameraCaptureSession) {
+                    if (device != d) { sess.close(); return }
+                    session = sess
+                    startRepeating()
+                    state.update { it.copy(ready = true) }
+                }
+
+                override fun onConfigureFailed(sess: CameraCaptureSession) {
+                    state.update { it.copy(ready = false, error = R.string.err_config) }
+                }
+            }))
+        } catch (_: Exception) {
+            state.update { it.copy(ready = false, error = R.string.err_config) }
+        }
+    }
+
+    /** Android's answer to "can these outputs be combined?" (null when the phone can't say). */
+    private fun supported(d: CameraDevice, outs: List<OutputConfiguration>): Boolean? = try {
+        d.isSessionConfigurationSupported(SessionConfiguration(SessionConfiguration.SESSION_REGULAR, outs, executor, object : CameraCaptureSession.StateCallback() {
+            override fun onConfigured(session: CameraCaptureSession) = Unit
+            override fun onConfigureFailed(session: CameraCaptureSession) = Unit
+        }))
+    } catch (_: Exception) {
+        null
+    }
+
+    private fun closeReaders() {
+        runCatching { jpegReader?.close() }
+        jpegReader = null
+        runCatching { rawReader?.close() }
+        rawReader = null
+        runCatching { yuvReader?.close() }
+        yuvReader = null
+    }
+
+    /** The outputs for [s], and the status line saying what is saved. Sets the readers and the *Active flags. */
+    private fun buildOutputs(s: Setup, preview: Surface, ultra: Boolean, hlg: Boolean): Pair<List<OutputConfiguration>, String> {
         val phys = s.lens.physicalId
-        fun cfg(surface: Surface, maxRes: Boolean = false) = OutputConfiguration(surface).apply {
+        val useHlg = hlg && s.mode == Mode.VIDEO && s.hevc && s.lens.hlg10
+        fun cfg(surface: Surface, maxRes: Boolean = false, tenBit: Boolean = false) = OutputConfiguration(surface).apply {
             if (phys != null) setPhysicalCameraId(phys)
             if (maxRes) addSensorPixelModeUsed(CameraMetadata.SENSOR_PIXEL_MODE_MAXIMUM_RESOLUTION)
+            // The preview and the recording carry the same 10-bit profile (Android's HDR video guide).
+            if (tenBit) setDynamicRangeProfile(DynamicRangeProfiles.HLG10)
         }
-        val outs = arrayListOf(cfg(preview))
+        val outs = arrayListOf(cfg(preview, tenBit = useHlg))
         maxResActive = false
+        ultraHdrActive = false
+        hdrVideoActive = false
         var saving = ""
         when (s.mode) {
             Mode.PHOTO, Mode.INTERVAL -> {
@@ -283,9 +386,17 @@ class CameraController(private val context: Context) {
                         rawReader = reader(rawSize, s.raw!!.format, raw = true).also { outs += cfg(it.surface) }
                         saving = "${s.raw!!.name} · ${mp(rawSize)}"
                     }
-                    if ((wantJpeg || rawReader == null) && s.lens.jpeg != null) {
-                        jpegReader = reader(s.lens.jpeg, ImageFormat.JPEG, raw = false).also { outs += cfg(it.surface) }
-                        saving = if (saving.isEmpty()) "JPEG · ${mp(s.lens.jpeg)}" else "$saving + JPEG"
+                    if (wantJpeg || rawReader == null) {
+                        // Ultra HDR: a JPEG with a gain map (JPEG_R), in the lens's normal mode only.
+                        val uhdr = s.lens.ultraHdr
+                        if (ultra && s.mode == Mode.PHOTO && uhdr != null) {
+                            jpegReader = reader(uhdr, ImageFormat.JPEG_R, raw = false).also { outs += cfg(it.surface) }
+                            ultraHdrActive = true
+                            saving = if (saving.isEmpty()) "ULTRA HDR · ${mp(uhdr)}" else "$saving + ULTRA HDR"
+                        } else if (s.lens.jpeg != null) {
+                            jpegReader = reader(s.lens.jpeg, ImageFormat.JPEG, raw = false).also { outs += cfg(it.surface) }
+                            saving = if (saving.isEmpty()) "JPEG · ${mp(s.lens.jpeg)}" else "$saving + JPEG"
+                        }
                     }
                 }
             }
@@ -310,31 +421,39 @@ class CameraController(private val context: Context) {
                 // The persistent surface takes its buffer size from a prepared recorder before the session uses it.
                 val tmp = File(context.cacheDir, "prepare.mp4")
                 try {
-                    runCatching { newRecorder(size, s.hevc, null, tmp, 0, audio = false).apply { prepare(); release() } }
+                    runCatching { newRecorder(size, s.hevc, null, tmp, 0, audio = false, fps = videoFps(s), hdr = useHlg).apply { prepare(); release() } }
                 } finally {
                     tmp.delete()
                 }
-                outs += cfg(surface)
+                outs += cfg(surface, tenBit = useHlg)
+                hdrVideoActive = useHlg
                 saving = "${if (s.hevc) "HEVC" else "H.264"} · ${size.width}×${size.height}"
             }
         }
-        state.update { it.copy(saving = saving) }
-        try {
-            d.createCaptureSession(SessionConfiguration(SessionConfiguration.SESSION_REGULAR, outs, executor, object : CameraCaptureSession.StateCallback() {
-                override fun onConfigured(sess: CameraCaptureSession) {
-                    if (device != d) { sess.close(); return }
-                    session = sess
-                    startRepeating()
-                    state.update { it.copy(ready = true) }
-                }
+        return outs to saving
+    }
 
-                override fun onConfigureFailed(sess: CameraCaptureSession) {
-                    state.update { it.copy(ready = false, error = R.string.err_config) }
-                }
-            }))
-        } catch (_: Exception) {
-            state.update { it.copy(ready = false, error = R.string.err_config) }
-        }
+    /** The frame rate the video session uses: the chosen one where the lens can hold it at this size, else 30. */
+    private fun videoFps(s: Setup): Int {
+        val offered = s.lens.videoFps(s.videoSize)
+        return if (s.fps in offered) s.fps else 30
+    }
+
+    /** Electronic stabilisation, except with 10-bit HDR at 4K and above (that combination crashes some phones' camera). */
+    private fun eisAllowed(s: Setup): Boolean {
+        val uhd = (s.videoSize?.let { it.width.toLong() * it.height } ?: 0L) >= 3840L * 2160
+        return s.stabilization && CameraMetadata.CONTROL_VIDEO_STABILIZATION_MODE_ON in s.lens.videoStabModes && !(hdrVideoActive && uhd)
+    }
+
+    private fun oisAllowed(s: Setup) = s.stabilization && CameraMetadata.LENS_OPTICAL_STABILIZATION_MODE_ON in s.lens.oisModes
+
+    private fun videoExtras(s: Setup): String {
+        if (s.mode != Mode.VIDEO) return ""
+        return listOfNotNull(
+            "${videoFps(s)} fps",
+            if (hdrVideoActive) "HDR HLG" else null,
+            if (eisAllowed(s) || oisAllowed(s)) "STAB" else null,
+        ).joinToString(" · ")
     }
 
     private fun reader(size: Size, format: Int, raw: Boolean): ImageReader =
@@ -351,9 +470,32 @@ class CameraController(private val context: Context) {
 
     private val aeWatcher = object : CameraCaptureSession.CaptureCallback() {
         override fun onCaptureCompleted(session: CameraCaptureSession, request: CaptureRequest, result: TotalCaptureResult) {
-            result.get(android.hardware.camera2.CaptureResult.SENSOR_EXPOSURE_TIME)?.let { lastAeNs = it }
-            result.get(android.hardware.camera2.CaptureResult.SENSOR_SENSITIVITY)?.let { lastAeIso = it }
+            result.get(CaptureResult.SENSOR_EXPOSURE_TIME)?.let { lastAeNs = it }
+            result.get(CaptureResult.SENSOR_SENSITIVITY)?.let { lastAeIso = it }
+            // A physical lens reports its own focus distance in the physical result.
+            val phys = setup?.lens?.physicalId
+            val own = phys?.let { runCatching { result.physicalCameraTotalResults[it] }.getOrNull() } ?: result
+            focusDiopters = own.get(CaptureResult.LENS_FOCUS_DISTANCE) ?: result.get(CaptureResult.LENS_FOCUS_DISTANCE) ?: -1f
+            afState = result.get(CaptureResult.CONTROL_AF_STATE) ?: -1
+            precapture?.let { p ->
+                // Flash photos: after the trigger, wait until the precapture metering has started and then ended.
+                // A camera that never reports the metering state gets a few frames instead.
+                if (!p.triggered) return@let
+                val ae = result.get(CaptureResult.CONTROL_AE_STATE)
+                if (ae == CaptureResult.CONTROL_AE_STATE_PRECAPTURE) {
+                    p.started = true
+                } else if (p.started || ++p.framesAfter >= PRECAPTURE_FRAMES) {
+                    finishPrecapture(p)
+                }
+            }
         }
+    }
+
+    private fun finishPrecapture(p: Precapture) {
+        if (p.done || precapture !== p) return
+        p.done = true
+        precapture = null
+        p.run()
     }
 
     private fun startRepeating() {
@@ -368,7 +510,30 @@ class CameraController(private val context: Context) {
             if (recording) persistent?.let(b::addTarget)
             if (s.mode == Mode.SCAN) yuvReader?.let { b.addTarget(it.surface) }
             apply(b, s)
+            if (s.mode == Mode.VIDEO) applyVideo(b, s)
             sess.setRepeatingRequest(b.build(), aeWatcher, handler)
+        }
+    }
+
+    /** Frame rate and stabilisation for the video preview and recording. */
+    private fun applyVideo(b: CaptureRequest.Builder, s: Setup) {
+        val fps = videoFps(s)
+        if (fps in s.lens.videoFps(s.videoSize)) b.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, android.util.Range(fps, fps))
+        if (s.lens.videoStabModes.isNotEmpty()) {
+            b.set(CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE, if (eisAllowed(s)) CameraMetadata.CONTROL_VIDEO_STABILIZATION_MODE_ON else CameraMetadata.CONTROL_VIDEO_STABILIZATION_MODE_OFF)
+        }
+        if (s.lens.oisModes.size > 1) {
+            b.set(CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE, if (oisAllowed(s)) CameraMetadata.LENS_OPTICAL_STABILIZATION_MODE_ON else CameraMetadata.LENS_OPTICAL_STABILIZATION_MODE_OFF)
+        }
+    }
+
+    /** Auto exposure with the flash, for Photo mode when the flash is on or automatic (and the torch is off). */
+    private fun flashAeMode(s: Setup, m: Manual): Int? {
+        if (s.mode != Mode.PHOTO || m.torch || !m.auto || !s.lens.hasFlashModes || bracketRunning) return null
+        return when (flashMode) {
+            FlashMode.OFF -> null
+            FlashMode.AUTO -> CameraMetadata.CONTROL_AE_MODE_ON_AUTO_FLASH.takeIf { it in s.lens.aeModes }
+            FlashMode.ON -> CameraMetadata.CONTROL_AE_MODE_ON_ALWAYS_FLASH
         }
     }
 
@@ -376,7 +541,7 @@ class CameraController(private val context: Context) {
         val m = manual
         b.set(CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_AUTO)
         if (m.auto || !s.lens.manualSensor || s.mode == Mode.SCAN) {
-            b.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_ON)
+            b.set(CaptureRequest.CONTROL_AE_MODE, flashAeMode(s, m) ?: CameraMetadata.CONTROL_AE_MODE_ON)
             s.lens.evRange?.let { b.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, m.ev.coerceIn(it.lower, it.upper)) }
         } else {
             b.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_OFF)
@@ -396,8 +561,18 @@ class CameraController(private val context: Context) {
             b.set(CaptureRequest.CONTROL_AF_MODE, if (s.mode == Mode.VIDEO) CameraMetadata.CONTROL_AF_MODE_CONTINUOUS_VIDEO else CameraMetadata.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
         }
         if (m.awb in s.lens.awbModes) b.set(CaptureRequest.CONTROL_AWB_MODE, m.awb)
+        // With a flash auto-exposure mode the camera fires the flash itself; FLASH_MODE only matters for the torch.
         if (s.lens.flash) b.set(CaptureRequest.FLASH_MODE, if (m.torch) CameraMetadata.FLASH_MODE_TORCH else CameraMetadata.FLASH_MODE_OFF)
         s.lens.zoom?.let { b.set(CaptureRequest.CONTROL_ZOOM_RATIO, m.zoom.coerceIn(it.lower, it.upper)) }
+    }
+
+    /** Changes the flash mode; the preview request carries it, so auto exposure meters for it. */
+    fun setFlash(mode: FlashMode) {
+        handler.post {
+            if (flashMode == mode) return@post
+            flashMode = mode
+            startRepeating()
+        }
     }
 
     fun setManual(m: Manual) {
@@ -464,48 +639,144 @@ class CameraController(private val context: Context) {
         return withTimeoutOrNull(TIMEOUT + 5_000) { done.await() }
     }
 
-    private fun capture(saveJpeg: Boolean, onShot: ((Shot?) -> Unit)?) {
+    private fun capture(
+        saveJpeg: Boolean,
+        onShot: ((Shot?) -> Unit)?,
+        exposure: Pair<Long, Int>? = null,
+        name: String? = null,
+        onDone: ((Boolean) -> Unit)? = null,
+    ) {
         handler.post {
             val s = setup
             val sess = session
             val d = device
             if (s == null || sess == null || d == null || (s.mode != Mode.PHOTO && s.mode != Mode.INTERVAL) || pending != null) {
                 onShot?.invoke(null)
+                onDone?.invoke(false)
                 return@post
             }
             val jpeg = jpegReader
             val raw = if (onShot != null) null else rawReader
             if (jpeg == null && raw == null || (onShot != null && jpeg == null)) {
                 onShot?.invoke(null)
+                onDone?.invoke(false)
                 return@post
             }
-            val p = Pending(wantJpeg = jpeg != null, wantRaw = raw != null, saveJpeg = saveJpeg, onShot = onShot)
+            val p = Pending(wantJpeg = jpeg != null, wantRaw = raw != null, saveJpeg = saveJpeg, onShot = onShot, name = name, onDone = onDone)
             pending = p
             state.update { it.copy(busy = true) }
             val orient = jpegOrientation(s.lens)
-            try {
-                val b = d.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE)
-                jpeg?.let { b.addTarget(it.surface) }
-                raw?.let { b.addTarget(it.surface) }
-                apply(b, s)
-                b.set(CaptureRequest.JPEG_ORIENTATION, orient)
-                b.set(CaptureRequest.JPEG_QUALITY, s.jpegQuality.toByte())
-                if (raw != null) b.set(CaptureRequest.STATISTICS_LENS_SHADING_MAP_MODE, CameraMetadata.STATISTICS_LENS_SHADING_MAP_MODE_ON)
-                if (maxResActive) b.set(CaptureRequest.SENSOR_PIXEL_MODE, CameraMetadata.SENSOR_PIXEL_MODE_MAXIMUM_RESOLUTION)
-                if (shutterSound) sound.play(MediaActionSound.SHUTTER_CLICK)
-                sess.capture(b.build(), object : CameraCaptureSession.CaptureCallback() {
-                    override fun onCaptureCompleted(session: CameraCaptureSession, request: CaptureRequest, result: TotalCaptureResult) {
-                        p.result.complete(result)
+            val m = manual
+            val flashAe = if (exposure == null) flashAeMode(s, m) else null
+            // Manual exposure with the flash on: one flash pulse in the photo itself (no metering possible).
+            val singleFlash = exposure == null && !m.auto && s.lens.manualSensor && s.mode == Mode.PHOTO && flashMode == FlashMode.ON && s.lens.flash && !m.torch
+            val shoot = shoot@{
+                if (pending !== p || session !== sess) return@shoot
+                try {
+                    val b = d.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE)
+                    jpeg?.let { b.addTarget(it.surface) }
+                    raw?.let { b.addTarget(it.surface) }
+                    apply(b, s)
+                    if (exposure != null) {
+                        b.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_OFF)
+                        b.set(CaptureRequest.SENSOR_EXPOSURE_TIME, exposure.first)
+                        b.set(CaptureRequest.SENSOR_SENSITIVITY, exposure.second)
                     }
+                    if (singleFlash) b.set(CaptureRequest.FLASH_MODE, CameraMetadata.FLASH_MODE_SINGLE)
+                    if (s.lens.zsl) {
+                        // Zero-shutter-lag lets the camera use a frame from just before the press. Not with the flash,
+                        // set exposures (bracketing, manual) or maximum resolution, where that frame would be wrong.
+                        val zsl = zslAllowed && flashAe == null && !singleFlash && exposure == null && m.auto && !maxResActive && s.mode == Mode.PHOTO
+                        b.set(CaptureRequest.CONTROL_ENABLE_ZSL, zsl)
+                    }
+                    b.set(CaptureRequest.JPEG_ORIENTATION, orient)
+                    b.set(CaptureRequest.JPEG_QUALITY, s.jpegQuality.toByte())
+                    if (raw != null) b.set(CaptureRequest.STATISTICS_LENS_SHADING_MAP_MODE, CameraMetadata.STATISTICS_LENS_SHADING_MAP_MODE_ON)
+                    if (maxResActive) b.set(CaptureRequest.SENSOR_PIXEL_MODE, CameraMetadata.SENSOR_PIXEL_MODE_MAXIMUM_RESOLUTION)
+                    if (shutterSound) sound.play(MediaActionSound.SHUTTER_CLICK)
+                    sess.capture(b.build(), object : CameraCaptureSession.CaptureCallback() {
+                        override fun onCaptureCompleted(session: CameraCaptureSession, request: CaptureRequest, result: TotalCaptureResult) {
+                            p.result.complete(result)
+                        }
 
-                    override fun onCaptureFailed(session: CameraCaptureSession, request: CaptureRequest, failure: CaptureFailure) {
-                        p.result.completeExceptionally(IllegalStateException("capture failed"))
-                    }
-                }, handler)
-            } catch (e: Exception) {
-                p.result.completeExceptionally(e)
+                        override fun onCaptureFailed(session: CameraCaptureSession, request: CaptureRequest, failure: CaptureFailure) {
+                            p.result.completeExceptionally(IllegalStateException("capture failed"))
+                        }
+                    }, handler)
+                } catch (e: Exception) {
+                    p.result.completeExceptionally(e)
+                }
+            }
+            if (flashAe != null && previewSurface != null) {
+                // Flash: let auto exposure meter with the pre-flash first (the precapture sequence), then shoot.
+                val pc = Precapture(shoot)
+                precapture = pc
+                try {
+                    val t = d.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW)
+                    t.addTarget(previewSurface!!)
+                    apply(t, s)
+                    t.set(CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER, CameraMetadata.CONTROL_AE_PRECAPTURE_TRIGGER_START)
+                    sess.capture(t.build(), object : CameraCaptureSession.CaptureCallback() {
+                        override fun onCaptureCompleted(session: CameraCaptureSession, request: CaptureRequest, result: TotalCaptureResult) {
+                            pc.triggered = true
+                            if (result.get(CaptureResult.CONTROL_AE_STATE) == CaptureResult.CONTROL_AE_STATE_PRECAPTURE) pc.started = true
+                        }
+
+                        override fun onCaptureFailed(session: CameraCaptureSession, request: CaptureRequest, failure: CaptureFailure) {
+                            finishPrecapture(pc)
+                        }
+                    }, handler)
+                } catch (_: Exception) {
+                    finishPrecapture(pc)
+                }
+                // Never wait for ever: some cameras don't report the precapture state.
+                handler.postDelayed({ finishPrecapture(pc) }, PRECAPTURE_WAIT_MS)
+            } else {
+                shoot()
             }
             io.launch { save(p, s, orient) }
+        }
+    }
+
+    /**
+     * Exposure bracketing: [shots] photos at the exposures of [Bracket.plan], one after another, each saved like
+     * a normal photo (with "_EV-1", "_EV0", "_EV+1" in the name). Needs a lens with manual exposure control.
+     */
+    fun captureBracket(bracket: Bracket) {
+        handler.post {
+            val s = setup ?: return@post
+            if (s.mode != Mode.PHOTO || pending != null || bracketRunning || bracket == Bracket.OFF) return@post
+            val lens = s.lens
+            val iso = lens.iso
+            val ns = lens.exposureNs
+            val m = manual
+            val baseNs = if (!m.auto) m.exposureNs else lastAeNs
+            val baseIso = if (!m.auto) m.iso else lastAeIso
+            if (!lens.manualSensor || iso == null || ns == null || baseNs <= 0 || baseIso <= 0) {
+                state.update { it.copy(error = R.string.bracket_unavailable) }
+                return@post
+            }
+            val plan = Bracket.plan(baseNs, baseIso, iso.lower, iso.upper, ns.lower, ns.upper, bracket.evs)
+            val base = newName()
+            bracketRunning = true
+            state.update { it.copy(busy = true, bracketDone = 0, bracketTotal = plan.size) }
+            io.launch {
+                var failed = false
+                try {
+                    plan.forEachIndexed { i, step ->
+                        val done = CompletableDeferred<Boolean>()
+                        val ev = bracket.evs[i]
+                        val label = if (ev > 0) "+$ev" else ev.toString()
+                        capture(saveJpeg = true, onShot = null, exposure = step, name = "${base}_EV$label", onDone = { done.complete(it) })
+                        val ok = withTimeoutOrNull(TIMEOUT + 5_000) { done.await() } ?: false
+                        if (!ok) failed = true
+                        state.update { it.copy(bracketDone = i + 1) }
+                    }
+                } finally {
+                    bracketRunning = false
+                    state.update { it.copy(busy = false, bracketDone = 0, bracketTotal = 0, error = if (failed) R.string.err_capture else it.error) }
+                }
+            }
         }
     }
 
@@ -517,7 +788,7 @@ class CameraController(private val context: Context) {
         var bytes: ByteArray? = null
         try {
             val result = withTimeout(TIMEOUT) { p.result.await() }
-            val name = newName()
+            val name = p.name ?: newName()
             if (p.wantRaw) {
                 val img = withTimeout(TIMEOUT) { p.raw.await() }.also { rawUsed = true }
                 img.use { uri = Saver.saveRaw(context, it, s.lens, result, orient, name) }
@@ -537,9 +808,16 @@ class CameraController(private val context: Context) {
             if (!jpegUsed && !p.jpeg.completeExceptionally(IllegalStateException())) runCatching { p.jpeg.await().close() }
             handler.post { if (pending === p) pending = null }
             state.update {
-                it.copy(busy = false, lastUri = uri ?: it.lastUri, lastIsVideo = if (uri != null) false else it.lastIsVideo, error = if (failed) R.string.err_capture else it.error)
+                it.copy(
+                    busy = bracketRunning,
+                    lastUri = uri ?: it.lastUri,
+                    lastIsVideo = if (uri != null) false else it.lastIsVideo,
+                    // A bracketing series reports one error at its end.
+                    error = if (failed && p.onDone == null) R.string.err_capture else it.error,
+                )
             }
             p.onShot?.invoke(if (failed) null else bytes?.let { Shot(uri, it) })
+            p.onDone?.invoke(!failed)
         }
     }
 
@@ -677,17 +955,21 @@ class CameraController(private val context: Context) {
 
     // ---------- Video ----------
 
-    private fun newRecorder(size: Size, hevc: Boolean, fd: java.io.FileDescriptor?, file: File?, rotation: Int, audio: Boolean) =
+    private fun newRecorder(size: Size, hevc: Boolean, fd: java.io.FileDescriptor?, file: File?, rotation: Int, audio: Boolean, fps: Int, hdr: Boolean) =
         MediaRecorder(context).apply {
             if (audio) setAudioSource(MediaRecorder.AudioSource.CAMCORDER)
             setVideoSource(MediaRecorder.VideoSource.SURFACE)
             setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
             if (fd != null) setOutputFile(fd) else setOutputFile(file)
             val uhd = size.width.toLong() * size.height >= 3840L * 2160
-            setVideoEncodingBitRate(if (uhd) 48_000_000 else 18_000_000)
-            setVideoFrameRate(30)
+            // The bit rate grows with the frame rate (the 30 fps rates are the base).
+            val base = if (uhd) 48_000_000L else 18_000_000L
+            setVideoEncodingBitRate((base * fps / 30).coerceAtMost(Int.MAX_VALUE.toLong()).toInt())
+            setVideoFrameRate(fps)
             setVideoSize(size.width, size.height)
             setVideoEncoder(if (hevc) MediaRecorder.VideoEncoder.HEVC else MediaRecorder.VideoEncoder.H264)
+            // 10-bit HDR: HEVC Main10, matching the camera's HLG10 output (as in Android's HDR video sample).
+            if (hdr && hevc) setVideoEncodingProfileLevel(MediaCodecInfo.CodecProfileLevel.HEVCProfileMain10, MediaCodecInfo.CodecProfileLevel.HEVCMainTierLevel51)
             if (audio) {
                 setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
                 setAudioSamplingRate(48_000)
@@ -712,7 +994,7 @@ class CameraController(private val context: Context) {
         try {
             val pfd = context.contentResolver.openFileDescriptor(uri, "w") ?: throw IllegalStateException()
             val audio = context.hasPermission(Manifest.permission.RECORD_AUDIO)
-            val r = newRecorder(size, s.hevc, pfd.fileDescriptor, null, jpegOrientation(s.lens), audio)
+            val r = newRecorder(size, s.hevc, pfd.fileDescriptor, null, jpegOrientation(s.lens), audio, videoFps(s), hdrVideoActive)
             r.prepare()
             recorder = r
             recordUri = uri
@@ -753,6 +1035,9 @@ class CameraController(private val context: Context) {
         if (recorder != null) stopRecordingInternal()
         pending?.result?.completeExceptionally(IllegalStateException("closed"))
         pending = null
+        precapture = null
+        focusDiopters = -1f
+        afState = -1
         // A night burst cut short still saves the frames that arrived.
         night?.finishNow()
         night = null
@@ -802,6 +1087,8 @@ class CameraController(private val context: Context) {
     companion object {
         private const val TIMEOUT = 30_000L
         private const val NIGHT_IMAGES = 3
+        private const val PRECAPTURE_WAIT_MS = 3_000L
+        private const val PRECAPTURE_FRAMES = 8
 
         fun mp(s: Size): String {
             val mp = s.width.toLong() * s.height / 1_000_000.0

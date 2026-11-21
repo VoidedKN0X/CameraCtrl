@@ -83,6 +83,10 @@
     <string name="raw_private">RAW_PRIVATE (private layout, can\'t be saved)</string>
     <string name="ten_bit">10-bit HDR</string>
     <string name="closest_focus">closest focus %1$s</string>
+    <string name="focus_uncalibrated">focus distances not in real units (not used for close-up switching)</string>
+    <string name="ten_bit_hlg">10-bit HDR (HLG)</string>
+    <string name="row_extras">Photo extras</string>
+    <string name="extra_ultra_hdr">Ultra HDR %1$s</string>
 
     <!-- Settings -->
     <string name="group_photo">Photo</string>
@@ -187,4 +191,75 @@
     <string name="scan_wifi_note">Opens Android\'s own screen to add the network; you confirm it there. CameraCtrl can\'t see or change your Wi-Fi.</string>
     <string name="scan_wifi_unsupported">Android can\'t add this kind of network from an app. Copy the password and add the network in Settings.</string>
     <string name="scan_wifi_copy">Copy password</string>
+
+    <!-- Flash, bracketing, close-ups, volume keys -->
+    <string name="flash">Flash</string>
+    <string name="flash_off">Flash off</string>
+    <string name="flash_auto">Flash automatic</string>
+    <string name="flash_on">Flash on</string>
+    <string name="bracketing">Exposure bracketing</string>
+    <string name="bracket_pill">BKT</string>
+    <string name="bracket_pill_on">BKT %1$d×±%2$d</string>
+    <string name="bracket_progress">BRACKETING · %1$d OF %2$d</string>
+    <string name="bracket_unavailable">Bracketing needs the exposure to settle first. Wait a moment and try again.</string>
+    <string name="closeup_active">CLOSE-UP LENS · TAP A LENS TO CHOOSE YOURSELF</string>
+    <string name="volume_shutter">Volume keys take photos</string>
+    <string name="volume_shutter_sub">Either volume key takes a photo, or starts and stops a video, while the viewfinder is open</string>
+    <string name="zsl">Zero shutter lag</string>
+    <string name="zsl_sub">Lets the camera save the moment you pressed, on lenses that offer it. Not used with the flash, manual exposure, bracketing or maximum resolution.</string>
+    <string name="ultra_hdr">Ultra HDR photos</string>
+    <string name="ultra_hdr_sub">JPEGs with an HDR gain map, brighter highlights on HDR screens, on lenses that offer it. Other screens show a normal JPEG.</string>
+    <string name="closeup_switch">Switch lens for close-ups</string>
+    <string name="closeup_switch_sub">When a single lens can't focus that close, switch to the lens that focuses closest and back again, going by each lens's closest focus as your phone reports it</string>
+
+    <!-- Viewfinder aids -->
+    <string name="group_viewfinder">Viewfinder</string>
+    <string name="histogram">Histogram</string>
+    <string name="histogram_sub">Brightness of the picture, from dark to light; a violet edge means something is pure black or pure white</string>
+    <string name="peaking">Focus peaking</string>
+    <string name="peaking_sub">Marks the sharpest edges in violet while you focus by hand (Pro, Focus)</string>
+    <string name="level">Level</string>
+    <string name="level_sub">A line that stays level with the horizon; it turns violet when the phone is straight</string>
+    <string name="viewfinder_footer">The histogram and focus peaking are worked out from the viewfinder picture on the phone, a few times a second.</string>
+
+    <!-- Video -->
+    <string name="video_fps">Frame rate</string>
+    <string name="fps_value">%1$d fps</string>
+    <string name="stabilization">Stabilisation</string>
+    <string name="stabilization_sub">The lens's optical and the camera's electronic stabilisation, where your phone offers them</string>
+    <string name="hdr_video">10-bit HDR video</string>
+    <string name="hdr_video_sub">HLG, with HEVC only, on lenses that offer it</string>
+    <string name="video_footer">A frame rate is used only where the lens can record it at the chosen resolution; otherwise videos are 30 fps. The line under the viewfinder shows what is used.</string>
+
+    <!-- A photo for another app -->
+    <string name="review_photo">The photo you took</string>
+    <string name="review_note">This photo goes to the app that asked for it. It isn't saved in your library.</string>
+    <string name="review_retake">Retake</string>
+    <string name="review_use">Use photo</string>
+    <string name="review_failed">Couldn't hand the photo to the app. Try again.</string>
+    <string name="interval_busy_restricted">An interval run is going on. Unlock your phone and open CameraCtrl to see or stop it.</string>
+
+    <!-- Settings file -->
+    <string name="backup_title">Settings file</string>
+    <string name="backup_footer">The app lock and privacy settings are never in a settings file, so importing one can't turn them off.</string>
+    <string name="backup_save">Export settings</string>
+    <string name="backup_save_sub">Save your photo, viewfinder and video settings to a file</string>
+    <string name="backup_restore">Import settings</string>
+    <string name="backup_restore_sub">Use the settings from a CameraCtrl settings file</string>
+    <string name="backup_saved">Settings exported</string>
+    <string name="backup_save_failed">Couldn't save the settings file</string>
+    <string name="backup_not_valid">This isn't a CameraCtrl settings file</string>
+    <string name="backup_too_new">This settings file is from a newer CameraCtrl. Update CameraCtrl first.</string>
+    <string name="backup_restore_title">Import settings?</string>
+    <string name="backup_restore_body">The settings file from %1$s changes these settings:
+
+%2$s
+
+The app lock and privacy settings stay as they are.</string>
+    <string name="backup_nothing_changes">The settings file from %1$s has the same settings you use now. Nothing changes.</string>
+    <string name="backup_restore_confirm">Import</string>
+    <string name="backup_restored">Settings imported</string>
+    <string name="backup_item_night">Night mode</string>
+    <string name="backup_item_interval">Interval shooting</string>
+    <string name="ok">OK</string>
 </resources>

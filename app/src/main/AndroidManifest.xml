@@ -24,7 +24,7 @@
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
 
     <!-- intentMatchingFlags (Android 16+): other apps can only start CameraCtrl with an intent that matches
-         its filters (the launcher, and "open the camera"). -->
+         its filters (the launcher, "open the camera", "take a photo" and the lock-screen camera). -->
     <application
         android:name=".CameraCtrlApp"
         android:allowBackup="false"
@@ -55,6 +55,31 @@
             </intent-filter>
             <intent-filter>
                 <action android:name="android.media.action.VIDEO_CAMERA" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <!-- One photo for another app (IMAGE_CAPTURE: "take a photo" in a chat or form app), and the camera from
+             the lock screen (the *_SECURE actions), which is shown without unlocking but offers only the viewfinder
+             and the photos taken during that visit. Not in recent apps; its own task, so Back never shows the full
+             app from the lock screen. -->
+        <activity
+            android:name=".CaptureActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|keyboard|navigation|density|uiMode"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:taskAffinity=""
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.media.action.IMAGE_CAPTURE" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.media.action.IMAGE_CAPTURE_SECURE" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.media.action.STILL_IMAGE_CAMERA_SECURE" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>

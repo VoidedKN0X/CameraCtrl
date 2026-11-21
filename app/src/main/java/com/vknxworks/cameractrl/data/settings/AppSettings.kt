@@ -11,7 +11,10 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.vknxworks.cameractrl.R
+import com.vknxworks.cameractrl.camera.Bracket
+import com.vknxworks.cameractrl.camera.FlashMode
 import com.vknxworks.cameractrl.camera.PhotoFormat
+import com.vknxworks.cameractrl.camera.VIDEO_FPS
 import com.vknxworks.cameractrl.camera.RawProfile
 import com.vknxworks.cameractrl.interval.StopRule
 import com.vknxworks.cameractrl.night.NightPreset
@@ -60,6 +63,30 @@ data class AppSettings(
     val intervalStop: StopRule = StopRule.AfterShots(300),
     /** Interval mode: a timelapse video (true) or every shot as a photo (false). */
     val intervalVideo: Boolean = true,
+    /** Flash for photos (Photo mode; the torch is separate). */
+    val flash: FlashMode = FlashMode.OFF,
+    /** The volume keys take a photo (or start and stop a video) while the viewfinder is open. */
+    val volumeShutter: Boolean = true,
+    /** Video frame rate, where the lens allows it (24, 30 or 60). */
+    val videoFps: Int = 30,
+    /** Video stabilisation (the lens's optical and the camera's electronic stabilisation, where offered). */
+    val stabilization: Boolean = true,
+    /** 10-bit HDR video (HLG, HEVC), where the lens offers it. */
+    val hdrVideo: Boolean = false,
+    /** Live histogram over the viewfinder. */
+    val histogram: Boolean = false,
+    /** Focus peaking while focusing by hand. */
+    val peaking: Boolean = false,
+    /** Level (horizon line) over the viewfinder. */
+    val level: Boolean = false,
+    /** Exposure bracketing in Photo mode. */
+    val bracket: Bracket = Bracket.OFF,
+    /** Let the camera use zero-shutter-lag for photos where it offers it. */
+    val zsl: Boolean = true,
+    /** Ultra HDR photos (JPEG with an HDR gain map) where the lens offers them. */
+    val ultraHdr: Boolean = false,
+    /** Switch to the lens that focuses closest when the subject is too close for the chosen lens. */
+    val closeUpSwitch: Boolean = true,
 )
 
 class SettingsRepository(private val context: Context, scope: CoroutineScope) {
@@ -80,6 +107,18 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
         val intervalSeconds = intPreferencesKey("interval_seconds")
         val intervalStop = stringPreferencesKey("interval_stop")
         val intervalVideo = booleanPreferencesKey("interval_video")
+        val flash = stringPreferencesKey("flash")
+        val volumeShutter = booleanPreferencesKey("volume_shutter")
+        val videoFps = intPreferencesKey("video_fps")
+        val stabilization = booleanPreferencesKey("stabilization")
+        val hdrVideo = booleanPreferencesKey("hdr_video")
+        val histogram = booleanPreferencesKey("histogram")
+        val peaking = booleanPreferencesKey("peaking")
+        val level = booleanPreferencesKey("level")
+        val bracket = stringPreferencesKey("bracket")
+        val zsl = booleanPreferencesKey("zsl")
+        val ultraHdr = booleanPreferencesKey("ultra_hdr")
+        val closeUpSwitch = booleanPreferencesKey("close_up_switch")
     }
 
     private val prefs: Flow<Preferences> = context.appDataStore.data.catch { e ->
@@ -136,6 +175,18 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
         intervalSeconds = (this[K.intervalSeconds] ?: 5).takeIf { it in INTERVAL_CHOICES } ?: 5,
         intervalStop = StopRule.decode(this[K.intervalStop]) ?: StopRule.AfterShots(300),
         intervalVideo = this[K.intervalVideo] ?: true,
+        flash = enumOr(this[K.flash], FlashMode.OFF),
+        volumeShutter = this[K.volumeShutter] ?: true,
+        videoFps = (this[K.videoFps] ?: 30).takeIf { it in VIDEO_FPS } ?: 30,
+        stabilization = this[K.stabilization] ?: true,
+        hdrVideo = this[K.hdrVideo] ?: false,
+        histogram = this[K.histogram] ?: false,
+        peaking = this[K.peaking] ?: false,
+        level = this[K.level] ?: false,
+        bracket = enumOr(this[K.bracket], Bracket.OFF),
+        zsl = this[K.zsl] ?: true,
+        ultraHdr = this[K.ultraHdr] ?: false,
+        closeUpSwitch = this[K.closeUpSwitch] ?: true,
     )
 
     /** Saves a change. If the phone's storage fails, the change is dropped instead of closing the app. */
@@ -159,6 +210,18 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
                 p[K.intervalSeconds] = s.intervalSeconds
                 p[K.intervalStop] = s.intervalStop.encode()
                 p[K.intervalVideo] = s.intervalVideo
+                p[K.flash] = s.flash.name
+                p[K.volumeShutter] = s.volumeShutter
+                p[K.videoFps] = s.videoFps
+                p[K.stabilization] = s.stabilization
+                p[K.hdrVideo] = s.hdrVideo
+                p[K.histogram] = s.histogram
+                p[K.peaking] = s.peaking
+                p[K.level] = s.level
+                p[K.bracket] = s.bracket.name
+                p[K.zsl] = s.zsl
+                p[K.ultraHdr] = s.ultraHdr
+                p[K.closeUpSwitch] = s.closeUpSwitch
             }
         } catch (e: IOException) {
             // Nothing to do: the settings stay as they were.

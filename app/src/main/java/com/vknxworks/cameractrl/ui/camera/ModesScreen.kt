@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Camera
 import androidx.compose.material.icons.outlined.CameraAlt
 import androidx.compose.material.icons.outlined.Image
@@ -104,7 +105,9 @@ private fun LensGroup(l: Lens) {
             stringResource(R.string.row_video),
             listOfNotNull(
                 videoTiers(l.videoSizes).ifEmpty { null },
-                if (l.tenBit) stringResource(R.string.ten_bit) else null,
+                l.videoFps(null).takeIf { it.isNotEmpty() }?.joinToString("/", postfix = " fps"),
+                if (l.hlg10) stringResource(R.string.ten_bit_hlg) else if (l.tenBit) stringResource(R.string.ten_bit) else null,
+                if (CameraMetadata.CONTROL_VIDEO_STABILIZATION_MODE_ON in l.videoStabModes || CameraMetadata.LENS_OPTICAL_STABILIZATION_MODE_ON in l.oisModes) stringResource(R.string.stabilization) else null,
             ).joinToString(" · ").ifEmpty { stringResource(R.string.not_offered) },
             icon = Icons.Outlined.Videocam,
         )
@@ -115,8 +118,18 @@ private fun LensGroup(l: Lens) {
                 l.iso?.let { "ISO ${it.lower}–${it.upper}" },
                 l.exposureNs?.let { "${shutterLabel(it.lower)} – ${shutterLabel(it.upper)}" },
                 if (l.hasAf) stringResource(R.string.closest_focus, focusLabel(l.minFocus)) else stringResource(R.string.fixed_focus),
+                if (l.hasAf && !l.focusCalibrated) stringResource(R.string.focus_uncalibrated) else null,
             ).joinToString(" · "),
             icon = Icons.Outlined.Tune,
+        )
+        GroupRow(
+            stringResource(R.string.row_extras),
+            listOfNotNull(
+                if (l.hasFlashModes) stringResource(R.string.flash) else null,
+                l.ultraHdr?.let { stringResource(R.string.extra_ultra_hdr, CameraController.mp(it)) },
+                if (l.zsl) stringResource(R.string.zsl) else null,
+            ).joinToString(" · ").ifEmpty { stringResource(R.string.not_offered) },
+            icon = Icons.Outlined.AutoAwesome,
         )
         GroupRow(stringResource(R.string.row_level), levelName(l.hardwareLevel), icon = Icons.Outlined.CameraAlt)
     }
