@@ -22,6 +22,8 @@ Built and checked by CI only: nothing below has been run on a phone yet.
 - **Settings export and import.** **Settings > Settings file** saves your photo, viewfinder, video, night and interval settings to a JSON file you choose, and imports one again. Before an import CameraCtrl lists exactly which settings it will change and asks first. The app lock, Lock again, Hide in screenshots and Hide in recent apps are never in the file, so an import can't turn them off.
 - **The camera modes page shows more:** the frame rates, 10-bit HLG and stabilisation each lens offers, a "Photo extras" row (flash, Ultra HDR size, zero shutter lag), and whether a lens reports focus distances in real units.
 
+- **Dutch.** CameraCtrl now has a complete Dutch (Belgian Dutch, informal "je") translation of every screen, setting and message, including everything above. Android picks it when your phone's language is Dutch; otherwise CameraCtrl stays in English. There's no language setting in the app. Technical names and units (RAW, JPEG, HEVC, ISO, fps…) and the app name stay as they are.
+
 ### Permissions
 
 - No new permissions. The lock-screen camera and the photo for other apps are a second, separate screen (not in recent apps) registered for Android's standard camera requests.
