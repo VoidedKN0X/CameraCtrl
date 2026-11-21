@@ -1,0 +1,261 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Shell texts for this app -->
+    <string name="settings_subtitle">Foto, RAW, Video und Datenschutz</string>
+    <string name="app_lock_subtitle">Beim Öffnen von CameraCtrl nach einer App-PIN (und auf Wunsch deinem Fingerabdruck) fragen.</string>
+    <string name="app_lock_footer">CameraCtrl funktioniert komplett offline: keine Internetberechtigung, keine Analysen, kein Standortzugriff. Fotos und Videos landen direkt in deiner Mediathek auf diesem Smartphone.</string>
+    <string name="lock_prompt_subtitle">Deine Kamera</string>
+    <string name="lock_forgot_body">Die PIN kann nicht wiederhergestellt werden. CameraCtrl setzt seine Einstellungen zurück und schaltet die App-Sperre aus. Deine Fotos und Videos sind in deiner Mediathek und bleiben unberührt.</string>
+
+    <!-- Viewfinder -->
+    <string name="cam_permission_title">Kamera erlauben</string>
+    <string name="cam_permission_body">CameraCtrl braucht die Kamera, um Fotos und Videos aufzunehmen. Sie werden nur auf diesem Smartphone gespeichert.</string>
+    <string name="allow_camera">Kamera erlauben</string>
+    <string name="no_camera">Dieses Smartphone hat keine Kamera, die CameraCtrl nutzen kann</string>
+    <string name="fmt_jpeg">JPEG</string>
+    <string name="fmt_raw_jpeg">RAW+JPEG</string>
+    <string name="fmt_raw">RAW</string>
+    <string name="max_res">MAX. AUFL.</string>
+    <string name="timer">Selbstauslöser</string>
+    <string name="timer_off">Aus</string>
+    <string name="grid">Raster</string>
+    <string name="torch">Taschenlampe</string>
+    <string name="take_photo">Foto aufnehmen</string>
+    <string name="start_recording">Aufnahme starten</string>
+    <string name="stop_recording">Aufnahme beenden</string>
+    <string name="switch_camera">Kamera wechseln</string>
+    <string name="last_capture">Letztes Foto oder Video öffnen</string>
+    <string name="mode_photo">FOTO</string>
+    <string name="mode_video">VIDEO</string>
+    <string name="mode_pro">PRO</string>
+    <string name="lens_auto">AUTO</string>
+    <string name="no_raw_here">Dieses Objektiv hat keine RAW-Ausgabe; es wird JPEG gespeichert</string>
+    <string name="err_open">Kamera konnte nicht geöffnet werden</string>
+    <string name="err_disabled">Der Kamerazugriff ist aus. Schalte ihn in den Schnelleinstellungen oder unter Einstellungen &gt; Datenschutz ein.</string>
+    <string name="err_in_use">Eine andere App verwendet die Kamera</string>
+    <string name="err_config">Dieses Objektiv kann diese Ausgaben nicht kombinieren. Probier ein anderes Format.</string>
+    <string name="err_capture">Speichern fehlgeschlagen. Versuch es noch einmal.</string>
+
+    <!-- Pro -->
+    <string name="auto">AUTO</string>
+    <string name="af">AF</string>
+    <string name="pro_iso">ISO</string>
+    <string name="pro_shutter">VERSCHLUSS</string>
+    <string name="pro_focus">FOKUS</string>
+    <string name="pro_wb">WB</string>
+    <string name="pro_ev">EV</string>
+    <string name="no_manual">Dieses Objektiv erlaubt kein manuelles ISO und keine manuelle Verschlusszeit</string>
+    <string name="fixed_focus">Fixfokus</string>
+    <string name="no_ev">Dieses Objektiv hat keine Belichtungskorrektur</string>
+    <string name="ev_manual">Die Belichtungskorrektur funktioniert mit AUTO-Belichtung</string>
+    <string name="video_manual_note">Lange Verschlusszeiten senken die Bildrate des Videos</string>
+    <string name="wb_daylight">Tageslicht</string>
+    <string name="wb_cloudy">Bewölkt</string>
+    <string name="wb_shade">Schatten</string>
+    <string name="wb_twilight">Dämmerung</string>
+    <string name="wb_fluorescent">Leuchtstoff</string>
+    <string name="wb_warm_fluorescent">Warmes Leuchtstofflicht</string>
+    <string name="wb_incandescent">Glühlampe</string>
+
+    <!-- Camera modes -->
+    <string name="modes_title">Kameramodi</string>
+    <string name="modes_intro">Was die Kamera dieses Smartphones Apps meldet, Objektiv für Objektiv. CameraCtrl liest das beim Start und bietet jeden hier aufgeführten Android-Standardmodus an; nichts ist auf ein bestimmtes Smartphone-Modell zugeschnitten.</string>
+    <string name="lens_back">Hinten</string>
+    <string name="lens_front">Vorne</string>
+    <string name="lens_external">Extern</string>
+    <string name="cam_id">Kamera %1$s</string>
+    <string name="cam_physical">Objektiv %1$s von Kamera %2$s</string>
+    <string name="focal">%1$d mm Kleinbildäquivalent (%2$s mm)</string>
+    <string name="kind_logical">Multikamera: Das Smartphone wechselt beim Zoomen zwischen den Objektiven %1$s (AUTO).</string>
+    <string name="kind_physical">Ein Objektiv einer Multikamera, einzeln verwendet.</string>
+    <string name="row_lens">Objektiv</string>
+    <string name="row_sensor">Sensor</string>
+    <string name="row_raw">RAW</string>
+    <string name="row_maxres">Modus für maximale Auflösung</string>
+    <string name="row_jpeg">JPEG</string>
+    <string name="row_video">Video</string>
+    <string name="row_manual">Manuelle Steuerung</string>
+    <string name="row_level">Camera2-Unterstützungsstufe</string>
+    <string name="not_offered">Nicht angeboten</string>
+    <string name="raw16">RAW16 → DNG</string>
+    <string name="raw12">RAW12 → DNG</string>
+    <string name="raw10">RAW10 → DNG</string>
+    <string name="raw_private">RAW_PRIVATE (privates Format, kann nicht gespeichert werden)</string>
+    <string name="ten_bit">10-Bit-HDR</string>
+    <string name="closest_focus">Naheinstellgrenze %1$s</string>
+    <string name="focus_uncalibrated">Fokusabstände nicht in echten Einheiten (nicht für den Nahaufnahme-Wechsel genutzt)</string>
+    <string name="ten_bit_hlg">10-Bit-HDR (HLG)</string>
+    <string name="row_extras">Foto-Extras</string>
+    <string name="extra_ultra_hdr">Ultra HDR %1$s</string>
+
+    <!-- Settings -->
+    <string name="group_photo">Foto</string>
+    <string name="photo_format">Format</string>
+    <string name="fmt_raw_jpeg_long">RAW (DNG) + JPEG</string>
+    <string name="fmt_raw_long">Nur RAW (DNG)</string>
+    <string name="fmt_jpeg_long">Nur JPEG</string>
+    <string name="raw_profile">RAW-Profil</string>
+    <string name="raw_auto">Das Beste dieses Objektivs</string>
+    <string name="max_res_setting">Maximale Auflösung</string>
+    <string name="max_res_sub">Die volle Sensorauflösung nutzen, wo das Objektiv den Android-Modus für maximale Auflösung bietet. Eine Datei pro Aufnahme.</string>
+    <string name="jpeg_quality">JPEG-Qualität</string>
+    <string name="grid_sub">Drittel-Linien über dem Sucher</string>
+    <string name="shutter_sound">Auslöseton</string>
+    <string name="shutter_sound_sub">In manchen Ländern Pflicht; dein Smartphone spielt ihn eventuell trotzdem ab</string>
+    <string name="photo_footer">RAW-Dateien sind die eigenen Daten des Sensors, als DNG gespeichert für jeden RAW-Editor wie LumenCtrl. Fotos landen in DCIM/CameraCtrl, Videos in Movies/CameraCtrl. Es wird nie ein Standort gespeichert.</string>
+    <string name="group_video">Video</string>
+    <string name="video_quality">Auflösung</string>
+    <string name="video_codec">Codec</string>
+    <string name="codec_hevc">HEVC (H.265), kleinere Dateien</string>
+    <string name="codec_avc">H.264, läuft überall</string>
+
+    <!-- Units -->
+    <string name="unit_s">%1$d s</string>
+    <string name="unit_min">%1$d min</string>
+    <string name="unit_h">%1$d h</string>
+
+    <!-- Night mode -->
+    <string name="mode_night">NACHT</string>
+    <string name="take_night_photo">Nachtfoto aufnehmen (mehrere Bilder zusammengeführt)</string>
+    <string name="night_handheld">FREIHAND · %1$d BILDER</string>
+    <string name="night_tripod">STATIV · %1$d BILDER</string>
+    <string name="night_note_handheld">Der Nachtmodus nimmt %1$d Fotos hintereinander auf und führt sie zu einem rauschärmeren JPEG zusammen. Das ist eine Mehrbild-Zusammenführung, keine Langzeitbelichtung: Halte das Smartphone so ruhig wie möglich, bis es fertig ist. Bewegte Dinge können weicher aussehen. Im Nachtmodus wird kein RAW gespeichert.</string>
+    <string name="night_note_tripod">Der Nachtmodus nimmt %1$d längere Fotos hintereinander auf und führt sie zu einem rauschärmeren JPEG zusammen. Das ist eine Mehrbild-Zusammenführung, keine Langzeitbelichtung: Stell das Smartphone auf ein Stativ oder etwas Stabiles und berühre es nicht, bis es fertig ist. Im Nachtmodus wird kein RAW gespeichert.</string>
+    <string name="night_capturing">STILL HALTEN · BILD %1$d VON %2$d</string>
+    <string name="night_merging">%1$d BILDER WERDEN ZUSAMMENGEFÜHRT…</string>
+    <string name="night_last">Letztes Nachtfoto: %1$d Bilder zusammengeführt</string>
+
+    <!-- Interval and timelapse -->
+    <string name="mode_interval">INTERVALL</string>
+    <string name="start_interval">Intervallaufnahme starten</string>
+    <string name="interval_every">ALLE</string>
+    <string name="interval_stop_after">STOPP</string>
+    <string name="interval_save">SPEICHERN</string>
+    <string name="interval_out_video">ZEITRAFFER-VIDEO</string>
+    <string name="interval_out_photos">FOTOS</string>
+    <string name="interval_until_stopped">BIS ICH STOPPE</string>
+    <plurals name="interval_after_shots">
+        <item quantity="one">%1$d Aufnahme</item>
+        <item quantity="other">%1$d Aufnahmen</item>
+    </plurals>
+    <string name="interval_summary_video">%1$d Aufnahmen über %2$s ergeben ein Video von %3$s mit 30 fps.</string>
+    <string name="interval_summary_photos">%1$d JPEG-Fotos über %2$s, gespeichert in DCIM/CameraCtrl.</string>
+    <string name="interval_summary_open_video">Eine Aufnahme alle %1$s, bis du stoppst; je 30 Aufnahmen ergeben eine Sekunde Video.</string>
+    <string name="interval_summary_open_photos">Ein JPEG-Foto alle %1$s, bis du stoppst.</string>
+    <string name="interval_note">Die Serie läuft auch mit gedimmtem oder ausgeschaltetem Bildschirm weiter: CameraCtrl hält die Kamera in einem Vordergrunddienst, bis die Serie endet oder du sie stoppst. Nur JPEG; RAW wird nicht verwendet.</string>
+    <string name="interval_running_photos">INTERVALLAUFNAHME</string>
+    <string name="interval_running_video">ZEITRAFFER</string>
+    <string name="interval_preview_off">Keine Vorschau während der Serie; das ist die letzte Aufnahme</string>
+    <string name="interval_label_shots">AUFNAHMEN</string>
+    <string name="interval_label_next">NÄCHSTE</string>
+    <string name="interval_label_elapsed">VERSTRICHEN</string>
+    <string name="interval_video_so_far">Video bisher: %1$s</string>
+    <string name="interval_dim">Bildschirm dimmen</string>
+    <string name="interval_dim_hint">zum Aufwecken tippen</string>
+    <string name="interval_dim_line">%1$d · %2$s</string>
+    <string name="interval_stop">Stopp</string>
+    <string name="interval_finishing">Zeitraffer-Video wird fertiggestellt…</string>
+    <string name="interval_saved_video">Zeitraffer gespeichert: %1$d Bilder</string>
+    <plurals name="interval_saved_photos">
+        <item quantity="one">%1$d Foto gespeichert</item>
+        <item quantity="other">%1$d Fotos gespeichert</item>
+    </plurals>
+    <string name="interval_err_start">Intervallaufnahme konnte nicht gestartet werden. Versuch es noch einmal, während CameraCtrl auf dem Bildschirm ist.</string>
+    <string name="interval_channel">Intervallaufnahme</string>
+    <string name="interval_channel_desc">Wird angezeigt, während eine Intervallserie oder ein Zeitraffer läuft</string>
+    <string name="interval_notif_title">Intervallaufnahme</string>
+    <string name="interval_notif_text">CameraCtrl verwendet die Kamera für deine Intervallserie. Tippe auf Stopp, um sie zu beenden.</string>
+
+    <!-- QR and barcode scanner -->
+    <string name="mode_scan">SCAN</string>
+    <string name="scan_hint">Auf einen QR-Code oder Barcode richten</string>
+    <string name="scan_link">Link</string>
+    <string name="scan_wifi">WLAN-Netzwerk</string>
+    <string name="scan_text">Text</string>
+    <string name="scan_open">Link öffnen</string>
+    <string name="scan_open_note">Wird erst im Browser geöffnet, wenn du auf Öffnen tippst. Prüfe zuerst die vollständige Adresse oben.</string>
+    <string name="scan_copy">Kopieren</string>
+    <string name="scan_share">Teilen</string>
+    <string name="scan_share_title">Inhalt des Codes teilen</string>
+    <string name="scan_again">Erneut scannen</string>
+    <string name="scan_wifi_name">Netzwerk</string>
+    <string name="scan_wifi_password">Passwort</string>
+    <string name="scan_wifi_security">Sicherheit</string>
+    <string name="scan_wifi_hidden">Verborgenes Netzwerk</string>
+    <string name="scan_wifi_sec_open">Keine (offenes Netzwerk)</string>
+    <string name="scan_wifi_sec_wep">WEP</string>
+    <string name="scan_wifi_sec_wpa">WPA/WPA2</string>
+    <string name="scan_wifi_sec_sae">WPA3</string>
+    <string name="scan_wifi_sec_unknown">Unbekannt</string>
+    <string name="scan_wifi_connect">Dieses Netzwerk hinzufügen</string>
+    <string name="scan_wifi_note">Öffnet den Android-eigenen Bildschirm zum Hinzufügen des Netzwerks; dort bestätigst du es. CameraCtrl kann dein WLAN weder sehen noch ändern.</string>
+    <string name="scan_wifi_unsupported">Android kann diese Art von Netzwerk nicht aus einer App hinzufügen. Kopiere das Passwort und füge das Netzwerk in den Einstellungen hinzu.</string>
+    <string name="scan_wifi_copy">Passwort kopieren</string>
+
+    <!-- Flash, bracketing, close-ups, volume keys -->
+    <string name="flash">Blitz</string>
+    <string name="flash_off">Blitz aus</string>
+    <string name="flash_auto">Blitz automatisch</string>
+    <string name="flash_on">Blitz an</string>
+    <string name="bracketing">Belichtungsreihe</string>
+    <string name="bracket_pill">BKT</string>
+    <string name="bracket_pill_on">BKT %1$d×±%2$d</string>
+    <string name="bracket_progress">BELICHTUNGSREIHE · %1$d VON %2$d</string>
+    <string name="bracket_unavailable">Für die Belichtungsreihe muss sich die Belichtung erst einpendeln. Warte kurz und versuch es noch einmal.</string>
+    <string name="closeup_active">NAHAUFNAHME-OBJEKTIV · TIPPE AUF EIN OBJEKTIV, UM SELBST ZU WÄHLEN</string>
+    <string name="volume_shutter">Lautstärketasten lösen aus</string>
+    <string name="volume_shutter_sub">Jede Lautstärketaste nimmt ein Foto auf oder startet und stoppt ein Video, solange der Sucher offen ist</string>
+    <string name="zsl">Auslösen ohne Verzögerung</string>
+    <string name="zsl_sub">Lässt die Kamera den Moment speichern, in dem du gedrückt hast, auf Objektiven, die das bieten. Nicht mit Blitz, manueller Belichtung, Belichtungsreihe oder maximaler Auflösung.</string>
+    <string name="ultra_hdr">Ultra-HDR-Fotos</string>
+    <string name="ultra_hdr_sub">JPEGs mit HDR-Gain-Map, hellere Lichter auf HDR-Bildschirmen, auf Objektiven, die das bieten. Andere Bildschirme zeigen ein normales JPEG.</string>
+    <string name="closeup_switch">Objektiv für Nahaufnahmen wechseln</string>
+    <string name="closeup_switch_sub">Wenn ein Objektiv nicht so nah fokussieren kann, zum Objektiv mit der kürzesten Naheinstellgrenze wechseln und wieder zurück, anhand der Naheinstellgrenze, die dein Smartphone für jedes Objektiv meldet</string>
+
+    <!-- Viewfinder aids -->
+    <string name="group_viewfinder">Sucher</string>
+    <string name="histogram">Histogramm</string>
+    <string name="histogram_sub">Helligkeit des Bildes, von dunkel bis hell; ein violetter Rand bedeutet, dass etwas reines Schwarz oder reines Weiß ist</string>
+    <string name="peaking">Fokus-Peaking</string>
+    <string name="peaking_sub">Markiert die schärfsten Kanten violett, während du manuell fokussierst (Pro, Fokus)</string>
+    <string name="level">Wasserwaage</string>
+    <string name="level_sub">Eine Linie, die waagerecht zum Horizont bleibt; sie wird violett, wenn das Smartphone gerade ist</string>
+    <string name="viewfinder_footer">Histogramm und Fokus-Peaking werden auf dem Smartphone aus dem Sucherbild berechnet, einige Male pro Sekunde.</string>
+
+    <!-- Video -->
+    <string name="video_fps">Bildrate</string>
+    <string name="fps_value">%1$d fps</string>
+    <string name="stabilization">Stabilisierung</string>
+    <string name="stabilization_sub">Die optische Stabilisierung des Objektivs und die elektronische der Kamera, wo dein Smartphone sie bietet</string>
+    <string name="hdr_video">10-Bit-HDR-Video</string>
+    <string name="hdr_video_sub">HLG, nur mit HEVC, auf Objektiven, die das bieten</string>
+    <string name="video_footer">Eine Bildrate wird nur verwendet, wenn das Objektiv sie in der gewählten Auflösung aufnehmen kann; sonst haben Videos 30 fps. Die Zeile unter dem Sucher zeigt, was verwendet wird.</string>
+
+    <!-- A photo for another app -->
+    <string name="review_photo">Das Foto, das du aufgenommen hast</string>
+    <string name="review_note">Dieses Foto geht an die App, die es angefordert hat. Es wird nicht in deiner Mediathek gespeichert.</string>
+    <string name="review_retake">Wiederholen</string>
+    <string name="review_use">Foto verwenden</string>
+    <string name="review_failed">Das Foto konnte nicht an die App übergeben werden. Versuch es noch einmal.</string>
+    <string name="interval_busy_restricted">Eine Intervallserie läuft. Entsperre dein Smartphone und öffne CameraCtrl, um sie zu sehen oder zu stoppen.</string>
+
+    <!-- Settings file -->
+    <string name="backup_title">Einstellungsdatei</string>
+    <string name="backup_footer">Die App-Sperre und die Datenschutzeinstellungen sind nie in einer Einstellungsdatei, ein Import kann sie also nicht ausschalten.</string>
+    <string name="backup_save">Einstellungen exportieren</string>
+    <string name="backup_save_sub">Deine Foto-, Sucher- und Videoeinstellungen in einer Datei speichern</string>
+    <string name="backup_restore">Einstellungen importieren</string>
+    <string name="backup_restore_sub">Die Einstellungen aus einer CameraCtrl-Einstellungsdatei verwenden</string>
+    <string name="backup_saved">Einstellungen exportiert</string>
+    <string name="backup_save_failed">Einstellungsdatei konnte nicht gespeichert werden</string>
+    <string name="backup_not_valid">Das ist keine CameraCtrl-Einstellungsdatei</string>
+    <string name="backup_too_new">Diese Einstellungsdatei stammt von einer neueren CameraCtrl-Version. Aktualisiere zuerst CameraCtrl.</string>
+    <string name="backup_restore_title">Einstellungen importieren?</string>
+    <string name="backup_restore_body">Die Einstellungsdatei vom %1$s ändert diese Einstellungen:\n\n%2$s\n\nDie App-Sperre und die Datenschutzeinstellungen bleiben, wie sie sind.</string>
+    <string name="backup_nothing_changes">Die Einstellungsdatei vom %1$s hat dieselben Einstellungen, die du jetzt verwendest. Es ändert sich nichts.</string>
+    <string name="backup_restore_confirm">Importieren</string>
+    <string name="backup_restored">Einstellungen importiert</string>
+    <string name="backup_item_night">Nachtmodus</string>
+    <string name="backup_item_interval">Intervallaufnahme</string>
+    <string name="ok">OK</string>
+</resources>

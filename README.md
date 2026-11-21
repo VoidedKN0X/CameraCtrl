@@ -35,7 +35,7 @@ Part of the [Ctrl series](#the-ctrl-series) by VKNXWorks.
 - **Formats:** RAW + JPEG, RAW only or JPEG only, with JPEG quality 90 to 100 %
 - **No location, ever:** CameraCtrl doesn't have the location permission
 - **App lock** with its own PIN and optional fingerprint unlock, and **Hide in screenshots** / **Hide in recent apps** (all off until you turn them on)
-- **English and Dutch:** CameraCtrl follows your phone's language (Dutch when your phone is set to Dutch, English otherwise); there's no language setting in the app
+- **English, Dutch, French and German:** CameraCtrl follows your phone's language (Dutch, French or German when your phone is set to one of them, English otherwise); you can also pick one for CameraCtrl alone in Android's per-app language setting (Settings > System > Languages > App languages)
 - **Ctrl / Signal look**, shared by every Ctrl app: dark and light, high contrast, one violet accent, Space Grotesk and JetBrains Mono
 
 ## What your phone allows
