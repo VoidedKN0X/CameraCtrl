@@ -8,8 +8,6 @@ To publish a new version: bump `versionCode` and `versionName` in `app/build.gra
 
 Built and checked by CI only: nothing in this release had been run on a phone when it was published.
 
-Built and checked by CI only: nothing below has been run on a phone yet.
-
 ### Added
 
 - **Flash for photos.** In Photo mode a flash button next to the torch cycles **off**, **automatic** and **on** (shown only on lenses with a flash; automatic only where the camera offers it). With automatic exposure CameraCtrl first lets the camera measure with a pre-flash (Android's precapture sequence; it never waits more than 3 seconds) and then takes the photo; with manual ISO and shutter speed, "on" fires the flash once in the photo. The torch still works as before and wins over the flash while it is on. The choice is remembered.
