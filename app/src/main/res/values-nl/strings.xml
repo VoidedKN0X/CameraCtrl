@@ -288,4 +288,6 @@
     <string name="backup_item_night">Nachtmodus</string>
     <string name="backup_item_interval">Intervalopnames</string>
     <string name="ok">OK</string>
+    <string name="max_res">MAX. RES.</string>
+    <string name="label_footer_badges">Google-vrij · Zonder telemetrie · arm64</string>
 </resources>

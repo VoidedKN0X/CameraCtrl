@@ -9,6 +9,7 @@ To publish a new version: bump `versionCode` and `versionName` in `app/build.gra
 ### Fixed
 
 - **The English settings-import dialog shows its line breaks again.** The text that lists which settings an import changes ran together on one line in English, because its line breaks were written as real new lines, which Android collapses into spaces. Dutch, French and German were already right. Not run on a phone.
+- **Dutch: two labels were still in English.** The MAX RES switch on the camera screen now reads "MAX. RES." and the badge line at the bottom of the You screen reads "Google-vrij · Zonder telemetrie · arm64", as the French and German versions already did.
 
 ## v0.5.0 (2026-11-21)
 
