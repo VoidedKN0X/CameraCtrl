@@ -635,7 +635,7 @@ class CameraController(private val context: Context) {
      */
     suspend fun captureShot(save: Boolean): Shot? {
         val done = CompletableDeferred<Shot?>()
-        capture(saveJpeg = save) { done.complete(it) }
+        capture(saveJpeg = save, onShot = { done.complete(it) })
         return withTimeoutOrNull(TIMEOUT + 5_000) { done.await() }
     }
 

@@ -112,6 +112,7 @@ internal fun rememberFrameAids(view: TextureView?, histogram: Boolean, peaking: 
 @Composable
 internal fun Histogram(bins: IntArray, modifier: Modifier = Modifier) {
     val label = stringResource(R.string.histogram)
+    val accent = CtrlColors.Accent
     Canvas(modifier.size(120.dp, 56.dp).clip(RoundedCornerShape(8.dp)).background(Scrim).semantics { contentDescription = label }) {
         // Square roots keep small but present tones visible next to a big peak.
         val top = bins.maxOrNull()?.takeIf { it > 0 } ?: return@Canvas
@@ -129,8 +130,8 @@ internal fun Histogram(bins: IntArray, modifier: Modifier = Modifier) {
         }
         drawPath(path, Ink.copy(alpha = 0.8f))
         // Clipping warnings: something is pure black or pure white.
-        if (bins.first() > top / 8) drawLine(CtrlColors.Accent, Offset(1f, 0f), Offset(1f, size.height), 3f)
-        if (bins.last() > top / 8) drawLine(CtrlColors.Accent, Offset(size.width - 1f, 0f), Offset(size.width - 1f, size.height), 3f)
+        if (bins.first() > top / 8) drawLine(accent, Offset(1f, 0f), Offset(1f, size.height), 3f)
+        if (bins.last() > top / 8) drawLine(accent, Offset(size.width - 1f, 0f), Offset(size.width - 1f, size.height), 3f)
     }
 }
 

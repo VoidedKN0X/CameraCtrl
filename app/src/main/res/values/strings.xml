@@ -210,7 +210,7 @@
     <string name="ultra_hdr">Ultra HDR photos</string>
     <string name="ultra_hdr_sub">JPEGs with an HDR gain map, brighter highlights on HDR screens, on lenses that offer it. Other screens show a normal JPEG.</string>
     <string name="closeup_switch">Switch lens for close-ups</string>
-    <string name="closeup_switch_sub">When a single lens can't focus that close, switch to the lens that focuses closest and back again, going by each lens's closest focus as your phone reports it</string>
+    <string name="closeup_switch_sub">When a single lens can\'t focus that close, switch to the lens that focuses closest and back again, going by each lens\'s closest focus as your phone reports it</string>
 
     <!-- Viewfinder aids -->
     <string name="group_viewfinder">Viewfinder</string>
@@ -226,29 +226,29 @@
     <string name="video_fps">Frame rate</string>
     <string name="fps_value">%1$d fps</string>
     <string name="stabilization">Stabilisation</string>
-    <string name="stabilization_sub">The lens's optical and the camera's electronic stabilisation, where your phone offers them</string>
+    <string name="stabilization_sub">The lens\'s optical and the camera\'s electronic stabilisation, where your phone offers them</string>
     <string name="hdr_video">10-bit HDR video</string>
     <string name="hdr_video_sub">HLG, with HEVC only, on lenses that offer it</string>
     <string name="video_footer">A frame rate is used only where the lens can record it at the chosen resolution; otherwise videos are 30 fps. The line under the viewfinder shows what is used.</string>
 
     <!-- A photo for another app -->
     <string name="review_photo">The photo you took</string>
-    <string name="review_note">This photo goes to the app that asked for it. It isn't saved in your library.</string>
+    <string name="review_note">This photo goes to the app that asked for it. It isn\'t saved in your library.</string>
     <string name="review_retake">Retake</string>
     <string name="review_use">Use photo</string>
-    <string name="review_failed">Couldn't hand the photo to the app. Try again.</string>
+    <string name="review_failed">Couldn\'t hand the photo to the app. Try again.</string>
     <string name="interval_busy_restricted">An interval run is going on. Unlock your phone and open CameraCtrl to see or stop it.</string>
 
     <!-- Settings file -->
     <string name="backup_title">Settings file</string>
-    <string name="backup_footer">The app lock and privacy settings are never in a settings file, so importing one can't turn them off.</string>
+    <string name="backup_footer">The app lock and privacy settings are never in a settings file, so importing one can\'t turn them off.</string>
     <string name="backup_save">Export settings</string>
     <string name="backup_save_sub">Save your photo, viewfinder and video settings to a file</string>
     <string name="backup_restore">Import settings</string>
     <string name="backup_restore_sub">Use the settings from a CameraCtrl settings file</string>
     <string name="backup_saved">Settings exported</string>
-    <string name="backup_save_failed">Couldn't save the settings file</string>
-    <string name="backup_not_valid">This isn't a CameraCtrl settings file</string>
+    <string name="backup_save_failed">Couldn\'t save the settings file</string>
+    <string name="backup_not_valid">This isn\'t a CameraCtrl settings file</string>
     <string name="backup_too_new">This settings file is from a newer CameraCtrl. Update CameraCtrl first.</string>
     <string name="backup_restore_title">Import settings?</string>
     <string name="backup_restore_body">The settings file from %1$s changes these settings:
