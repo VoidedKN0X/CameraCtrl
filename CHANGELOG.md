@@ -4,6 +4,12 @@ What changed in each CameraCtrl release. Every release on the [Releases page](ht
 
 To publish a new version: bump `versionCode` and `versionName` in `app/build.gradle.kts`, add a section here, and push to `main`. Pushes without a version bump only build; they don't make a release.
 
+## Unreleased
+
+### Fixed
+
+- **The English settings-import dialog shows its line breaks again.** The text that lists which settings an import changes ran together on one line in English, because its line breaks were written as real new lines, which Android collapses into spaces. Dutch, French and German were already right. Not run on a phone.
+
 ## v0.5.0 (2026-11-21)
 
 Built and checked by CI only: nothing in this release had been run on a phone when it was published.

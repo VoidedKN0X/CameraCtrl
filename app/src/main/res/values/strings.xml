@@ -251,11 +251,7 @@
     <string name="backup_not_valid">This isn\'t a CameraCtrl settings file</string>
     <string name="backup_too_new">This settings file is from a newer CameraCtrl. Update CameraCtrl first.</string>
     <string name="backup_restore_title">Import settings?</string>
-    <string name="backup_restore_body">The settings file from %1$s changes these settings:
-
-%2$s
-
-The app lock and privacy settings stay as they are.</string>
+    <string name="backup_restore_body">The settings file from %1$s changes these settings:\n\n%2$s\n\nThe app lock and privacy settings stay as they are.</string>
     <string name="backup_nothing_changes">The settings file from %1$s has the same settings you use now. Nothing changes.</string>
     <string name="backup_restore_confirm">Import</string>
     <string name="backup_restored">Settings imported</string>
