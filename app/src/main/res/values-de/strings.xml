@@ -5,7 +5,10 @@
     <string name="app_lock_subtitle">Beim Öffnen von CameraCtrl nach einer App-PIN (und auf Wunsch deinem Fingerabdruck) fragen.</string>
     <string name="app_lock_footer">CameraCtrl funktioniert komplett offline: keine Internetberechtigung, keine Analysen, kein Standortzugriff. Fotos und Videos landen direkt in deiner Mediathek auf diesem Smartphone.</string>
     <string name="lock_prompt_subtitle">Deine Kamera</string>
-    <string name="lock_forgot_body">Die PIN kann nicht wiederhergestellt werden. CameraCtrl setzt seine Einstellungen zurück und schaltet die App-Sperre aus. Deine Fotos und Videos sind in deiner Mediathek und bleiben unberührt.</string>
+    <string name="lock_forgot_body">Die PIN kann nicht wiederhergestellt werden. CameraCtrl setzt seine Einstellungen zurück und schaltet die App-Sperre aus. Deine Fotos und Videos sind in deiner Mediathek und bleiben unberührt. Wenn dein Smartphone eine Displaysperre hat, bestätigst du zuerst damit.</string>
+    <string name="lock_reset_prompt_title">App-Sperre von CameraCtrl zurücksetzen</string>
+    <string name="lock_reset_prompt_subtitle">Bestätige mit der Displaysperre deines Smartphones, dass du es bist</string>
+    <string name="lock_reset_prompt_failed">Die Displaysperre konnte nicht angezeigt werden</string>
 
     <!-- Viewfinder -->
     <string name="cam_permission_title">Kamera erlauben</string>

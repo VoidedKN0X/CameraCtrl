@@ -107,7 +107,7 @@ Turn the app lock on under **Settings > Privacy and security > App lock**. It's 
 - **Unlock with fingerprint** (optional) only accepts strong biometrics, checked by the phone's secure hardware. The PIN is still needed after the phone restarts and at least every 72 hours.
 - **The PIN is never stored.** It's stretched with 600,000 rounds of PBKDF2 and mixed with a key held in the phone's secure hardware.
 - **Wrong PINs:** after 5 tries you wait 30 seconds, doubling up to 15 minutes. Restarting the app or the phone, or changing the clock, doesn't skip the wait.
-- **Forgot your PIN?** It can't be recovered. The lock screen offers to reset CameraCtrl's settings and turn the lock off. Your photos and videos aren't touched.
+- **Forgot your PIN?** It can't be recovered. The lock screen offers to reset CameraCtrl's settings and turn the lock off, after you confirm with your phone's own screen lock (PIN, pattern, password or fingerprint) if it has one, so someone holding your unlocked phone can't simply reset it. Your photos and videos aren't touched.
 
 ## Privacy
 
@@ -117,7 +117,7 @@ Turn the app lock on under **Settings > Privacy and security > App lock**. It's 
 - **No location** is ever saved in your photos: CameraCtrl can't read your location at all.
 - The camera is only open while the viewfinder is on screen; it closes when you leave the app.
 - The lock-screen camera has no app lock of its own because it shows nothing you took before: only the viewfinder and the photos from that visit. A photo opens in your gallery only after you unlock, and the lock-screen camera closes when the screen turns off. Everything else in CameraCtrl still asks for the app lock.
-- A photo taken for another app goes only to that app (to the place it asked for, or as a small picture in the reply) and isn't saved in your library.
+- A photo taken for another app goes only to that app (to the place it asked for, or as a small picture in the reply) and isn't saved in your library. The place it asks for must be one that app can write itself: Android refuses the request otherwise, and CameraCtrl never writes into the phone's media library or its own files for another app, so no app can make CameraCtrl overwrite a photo you took.
 - A settings file holds only camera settings (no app lock, no privacy settings) and is saved only where you choose.
 - The level uses the phone's motion sensor, which needs no permission, only while the level is on and the viewfinder is open. The one exception is an interval run you start yourself: it keeps the camera until the run ends or you stop it, with Android's foreground-service notice showing that the camera is in use.
 - Night mode and the timelapse video are made on the phone. The QR scanner decodes codes on the phone with ZXing; nothing is looked up online, and a link only opens in your browser when you tap Open.

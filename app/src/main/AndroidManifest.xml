@@ -63,12 +63,15 @@
         <!-- One photo for another app (IMAGE_CAPTURE: "take a photo" in a chat or form app), and the camera from
              the lock screen (the *_SECURE actions), which is shown without unlocking but offers only the viewfinder
              and the photos taken during that visit. Not in recent apps; its own task, so Back never shows the full
-             app from the lock screen. -->
+             app from the lock screen. requireContentUriPermissionFromCaller="write": Android refuses to start it
+             when the caller hands over an address (EXTRA_OUTPUT, copied into the intent's ClipData) that the
+             caller itself can't write, so no app can make CameraCtrl overwrite a photo it doesn't own. -->
         <activity
             android:name=".CaptureActivity"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|keyboard|navigation|density|uiMode"
             android:excludeFromRecents="true"
             android:exported="true"
+            android:requireContentUriPermissionFromCaller="write"
             android:taskAffinity=""
             android:windowSoftInputMode="adjustResize">
             <intent-filter>

@@ -4,6 +4,19 @@ What changed in each CameraCtrl release. Every release on the [Releases page](ht
 
 To publish a new version: bump `versionCode` and `versionName` in `app/build.gradle.kts`, add a section here, and push to `main`. Pushes without a version bump only build; they don't make a release.
 
+## Unreleased
+
+Built and checked by CI only: nothing here has been run on a phone yet. Close-up switching is unchanged.
+
+### Security
+
+- **Another app can no longer make CameraCtrl overwrite your photos.** When an app asks CameraCtrl to "take a photo", it names the place to save it. CameraCtrl only refused plain file paths and its own files, but it accepted an address in the phone's media library, and CameraCtrl may write to every photo it saved there. So any installed app (without any storage permission) could ask for a photo with the address of one of your CameraCtrl photos, and after you tapped "Use photo" that photo was silently replaced. Now Android itself refuses the request unless the asking app can write to that place itself, and CameraCtrl also refuses any address in the media library. Chat and form apps that ask for a photo the normal way (their own file address with permission to write it) work as before. Needs a quick test with a chat app's "take a photo".
+- **"Forgot PIN?" now asks for your phone's screen lock first.** Before, anyone holding your unlocked phone could tap "Forgot PIN?" on CameraCtrl's lock screen and reset it. Now the reset first asks for your phone's own PIN, pattern, password or fingerprint. If you cancel or it fails, nothing is reset. If your phone has no screen lock at all, the reset works as before.
+
+### Project
+
+- CI now runs the unit tests on every build (`:app:testDebugUnitTest`), with a new test for where a photo for another app may be written.
+
 ## v0.5.2 (2026-11-22)
 
 Built and checked by CI only: nothing in this release had been run on a phone when it was published.

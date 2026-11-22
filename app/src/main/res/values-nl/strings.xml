@@ -73,7 +73,10 @@
     <string name="app_lock_subtitle">Vraag een app-pincode (en eventueel je vingerafdruk) bij het openen van CameraCtrl.</string>
     <string name="app_lock_footer">CameraCtrl werkt volledig offline: geen internettoegang, geen analyse en geen toegang tot je locatie. Foto\'s en video\'s gaan rechtstreeks naar je bibliotheek op deze telefoon.</string>
     <string name="lock_prompt_subtitle">Je camera</string>
-    <string name="lock_forgot_body">De pincode kan niet teruggehaald worden. CameraCtrl zet zijn instellingen terug en zet de app-vergrendeling uit. De foto\'s en video\'s die je nam staan in je bibliotheek en blijven onaangeroerd.</string>
+    <string name="lock_forgot_body">De pincode kan niet teruggehaald worden. CameraCtrl zet zijn instellingen terug en zet de app-vergrendeling uit. De foto\'s en video\'s die je nam staan in je bibliotheek en blijven onaangeroerd. Als je telefoon een schermvergrendeling heeft, bevestig je eerst daarmee.</string>
+    <string name="lock_reset_prompt_title">App-vergrendeling van CameraCtrl terugzetten</string>
+    <string name="lock_reset_prompt_subtitle">Gebruik de schermvergrendeling van je telefoon om te bevestigen dat jij het bent</string>
+    <string name="lock_reset_prompt_failed">De schermvergrendeling kon niet getoond worden</string>
 
     <string name="cam_permission_title">Geef toegang tot de camera</string>
     <string name="cam_permission_body">CameraCtrl heeft de camera nodig om foto\'s en video\'s te maken. Ze worden alleen op deze telefoon bewaard.</string>

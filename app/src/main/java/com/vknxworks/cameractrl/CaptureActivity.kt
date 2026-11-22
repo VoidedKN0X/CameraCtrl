@@ -71,9 +71,11 @@ class CaptureActivity : ComponentActivity() {
             val result: Intent? = withContext(Dispatchers.IO) {
                 runCatching {
                     if (output != null) {
-                        // Only a content address the other app granted us; never a plain file path, and never
-                        // one of CameraCtrl's own (an app can't make CameraCtrl overwrite its own files).
-                        if (output.scheme != "content" || output.authority?.startsWith(packageName) == true) error("refused")
+                        // Only a content address the other app granted us; never a plain file path, never one of
+                        // CameraCtrl's own, and never the phone's media library, where CameraCtrl owns every photo
+                        // it saved (an app can't make CameraCtrl overwrite them). Normal apps pass their own
+                        // FileProvider address with a write grant.
+                        if (!CaptureOutput.allowed(output.scheme, output.authority, packageName)) error("refused")
                         val stream = runCatching { contentResolver.openOutputStream(output, "wt") }.getOrNull()
                             ?: contentResolver.openOutputStream(output, "w")
                         (stream ?: error("no stream")).use { it.write(jpeg) }

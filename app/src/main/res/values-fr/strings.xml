@@ -5,7 +5,10 @@
     <string name="app_lock_subtitle">Demander un code (et, si vous le voulez, votre empreinte) à l\'ouverture de CameraCtrl.</string>
     <string name="app_lock_footer">CameraCtrl fonctionne entièrement hors ligne : aucune autorisation Internet, aucune statistique, aucun accès à la position. Les photos et vidéos vont directement dans la galerie de ce téléphone.</string>
     <string name="lock_prompt_subtitle">Votre appareil photo</string>
-    <string name="lock_forgot_body">Le code ne peut pas être récupéré. CameraCtrl va réinitialiser ses paramètres et désactiver le verrouillage. Les photos et vidéos prises sont dans votre galerie et ne sont pas touchées.</string>
+    <string name="lock_forgot_body">Le code ne peut pas être récupéré. CameraCtrl va réinitialiser ses paramètres et désactiver le verrouillage. Les photos et vidéos prises sont dans votre galerie et ne sont pas touchées. Si votre téléphone a un verrouillage d\'écran, vous confirmerez d\'abord avec celui-ci.</string>
+    <string name="lock_reset_prompt_title">Réinitialiser le verrouillage de CameraCtrl</string>
+    <string name="lock_reset_prompt_subtitle">Utilisez le verrouillage d\'écran de votre téléphone pour confirmer que c\'est bien vous</string>
+    <string name="lock_reset_prompt_failed">Impossible d\'afficher le verrouillage d\'écran</string>
 
     <!-- Viewfinder -->
     <string name="cam_permission_title">Autoriser l\'appareil photo</string>
