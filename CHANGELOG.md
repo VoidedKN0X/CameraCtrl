@@ -6,7 +6,7 @@ To publish a new version: bump `versionCode` and `versionName` in `app/build.gra
 
 ## v0.5.3 (2026-11-22)
 
-Built and checked by CI only: nothing in this release had been run on a phone when it was published.
+Built and checked by CI only: nothing in this release had been run on a phone when it was published. Close-up switching is unchanged.
 
 ### Security
 
