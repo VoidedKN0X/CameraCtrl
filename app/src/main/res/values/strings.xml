@@ -83,7 +83,7 @@
     <string name="raw_private">RAW_PRIVATE (private layout, can\'t be saved)</string>
     <string name="ten_bit">10-bit HDR</string>
     <string name="closest_focus">closest focus %1$s</string>
-    <string name="focus_uncalibrated">focus distances not in real units (not used for close-up switching)</string>
+    <string name="focus_uncalibrated">focus distances not in real units</string>
     <string name="ten_bit_hlg">10-bit HDR (HLG)</string>
     <string name="row_extras">Photo extras</string>
     <string name="extra_ultra_hdr">Ultra HDR %1$s</string>
@@ -202,7 +202,6 @@
     <string name="bracket_pill_on">BKT %1$d×±%2$d</string>
     <string name="bracket_progress">BRACKETING · %1$d OF %2$d</string>
     <string name="bracket_unavailable">Bracketing needs the exposure to settle first. Wait a moment and try again.</string>
-    <string name="closeup_active">CLOSE-UP LENS · TAP A LENS TO CHOOSE YOURSELF</string>
     <string name="volume_shutter">Volume keys take photos</string>
     <string name="volume_shutter_sub">Either volume key takes a photo, or starts and stops a video, while the viewfinder is open</string>
     <string name="zsl">Zero shutter lag</string>
@@ -210,7 +209,21 @@
     <string name="ultra_hdr">Ultra HDR photos</string>
     <string name="ultra_hdr_sub">JPEGs with an HDR gain map, brighter highlights on HDR screens, on lenses that offer it. Other screens show a normal JPEG.</string>
     <string name="closeup_switch">Switch lens for close-ups</string>
-    <string name="closeup_switch_sub">When a single lens can\'t focus that close, switch to the lens that focuses closest and back again, going by each lens\'s closest focus as your phone reports it</string>
+    <string name="closeup_switch_sub">When the subject is closer than the lens in use can focus, switch to the lens that focuses closer (in AUTO too) and back again, going by what your phone reports for each lens</string>
+    <string name="row_closeup">Close-up switching</string>
+    <string name="closeup_auto_lens">Watched in AUTO: switches to lens %1$s when the subject is too close</string>
+    <string name="closeup_auto_lens_zoom">Watched in AUTO: switches to lens %1$s when the subject is too close, or zooms out to %2$s× if that lens doesn\'t open</string>
+    <string name="closeup_auto_zoom">Watched in AUTO: no separate close-up lens can be used, so it zooms out to %1$s× (your phone\'s widest lens) when the subject is too close</string>
+    <string name="closeup_auto_none">Watched in AUTO, but there is no lens to switch to and no wider zoom</string>
+    <string name="closeup_ok_calibrated">Can be used: compared by closest focus</string>
+    <string name="closeup_ok_width">Can be used: focus not in real units, so lens width is used instead</string>
+    <string name="closeup_no_width">Not compared: focus not in real units and no focal length reported</string>
+    <string name="closeup_no_af">Not used: fixed focus</string>
+    <string name="closeup_unopenable">Not used: it didn\'t open when CameraCtrl switched to it (until you restart the app)</string>
+    <string name="closeup_from_lens">From this lens: switches to lens %1$s</string>
+    <string name="closeup_from_none">From this lens: no lens to switch to</string>
+    <string name="closeup_pill">MACRO</string>
+    <string name="closeup_pill_desc">Close-up lens in use. Tap to go back</string>
 
     <!-- Viewfinder aids -->
     <string name="group_viewfinder">Viewfinder</string>

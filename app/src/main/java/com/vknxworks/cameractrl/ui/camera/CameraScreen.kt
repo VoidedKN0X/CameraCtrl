@@ -78,6 +78,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -92,6 +93,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -107,7 +110,10 @@ import com.vknxworks.cameractrl.camera.CameraController
 import com.vknxworks.cameractrl.camera.CloseUp
 import com.vknxworks.cameractrl.camera.CloseUpTracker
 import com.vknxworks.cameractrl.camera.FlashMode
+import com.vknxworks.cameractrl.camera.CloseUpPlan
 import com.vknxworks.cameractrl.camera.FocusLens
+import com.vknxworks.cameractrl.camera.activeLens
+import com.vknxworks.cameractrl.camera.focusLens
 import com.vknxworks.cameractrl.camera.Lens
 import com.vknxworks.cameractrl.camera.LensDetector
 import com.vknxworks.cameractrl.camera.Manual
@@ -131,8 +137,10 @@ import com.vknxworks.cameractrl.ui.theme.CtrlColors
 import com.vknxworks.cameractrl.ui.theme.CtrlType
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.ln
@@ -243,8 +251,16 @@ private fun Viewfinder(lenses: List<Lens>, mode: Mode, run: IntervalState, launc
     var lensKey by rememberSaveable { mutableStateOf<String?>(null) }
     var pro by rememberSaveable { mutableStateOf(false) }
     var manual by remember { mutableStateOf(Manual()) }
-    /** The lens CameraCtrl switched away from for a close-up (it switches back when the subject is farther again). */
-    var closeUpFrom by rememberSaveable { mutableStateOf<String?>(null) }
+    /** A lens the user picked by tapping it: close-up switching leaves it alone. */
+    var lensPinned by rememberSaveable { mutableStateOf(false) }
+    /** Set while CameraCtrl has switched to a close-up lens (it switches back when the subject is farther again). */
+    var closeUp by remember { mutableStateOf<CloseUpState?>(null) }
+    /** The MACRO pill was tapped: no switching until the subject moves away or the lens or mode changes. */
+    var closeUpPaused by remember { mutableStateOf(false) }
+    /** The zoom to give the AUTO camera when CameraCtrl comes back to it from a close-up lens. */
+    var restoreZoom by remember { mutableStateOf<Float?>(null) }
+    var closeUpReturnAt by remember { mutableLongStateOf(0L) }
+    var closeUpBounces by remember { mutableIntStateOf(0) }
     /** Another app's photo, waiting for "Use photo" or "Retake". */
     var review by remember { mutableStateOf<ByteArray?>(null) }
 
@@ -288,7 +304,13 @@ private fun Viewfinder(lenses: List<Lens>, mode: Mode, run: IntervalState, launc
     }
     LaunchedEffect(manual) { controller.setManual(manual) }
     // A new lens starts with its own zoom and focus.
-    LaunchedEffect(lens.key) { manual = manual.copy(zoom = 1f, focus = null) }
+    // Coming back to AUTO from a close-up lens restores the zoom it had.
+    LaunchedEffect(lens.key) {
+        manual = manual.copy(zoom = restoreZoom ?: 1f, focus = null)
+        restoreZoom = null
+    }
+    // A new mode starts close-up switching afresh after the MACRO pill was tapped.
+    LaunchedEffect(mode) { closeUpPaused = false }
 
     val askAudio = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
     LaunchedEffect(mode) {
@@ -356,36 +378,87 @@ private fun Viewfinder(lenses: List<Lens>, mode: Mode, run: IntervalState, launc
     }
 
     // ---------- Close-ups ----------
-    // On a single lens, when autofocus sits at the lens's closest distance and the picture isn't sharp, switch to
-    // the lens that focuses closest (by the minimum focus distance the phone reports), and back when the subject
-    // is far enough again. The AUTO multi-camera does this itself.
-    val closeUpOn = settings.closeUpSwitch && !lens.logical && lens.hasAf && manual.focus == null && cam.ready &&
-        !cam.recording && !cam.busy && mode != Mode.INTERVAL
-    LaunchedEffect(lens.key, closeUpOn, closeUpFrom) {
+    // When autofocus sits at the near end of the lens in use and the picture isn't sharp, switch to the lens that
+    // focuses closer (or, on AUTO when no lens can be opened for it, zoom AUTO out to its widest lens), and back
+    // when the subject is far enough again. It runs on AUTO and on a lens CameraCtrl chose itself, not on a lens
+    // you tapped. Everything comes from what the phone reports (see CloseUp).
+    fun leaveCloseUp() {
+        val cu = closeUp ?: return
+        closeUp = null
+        closeUpReturnAt = SystemClock.elapsedRealtime()
+        if (cu.viaZoom) {
+            manual = manual.copy(zoom = cu.zoomBefore)
+        } else {
+            restoreZoom = cu.zoomBefore
+            lensKey = cu.fromKey
+        }
+    }
+    val closeUpOn = settings.closeUpSwitch && manual.focus == null && cam.ready && !cam.recording && !cam.busy &&
+        mode != Mode.INTERVAL && (closeUp != null || !lensPinned)
+    LaunchedEffect(lens.key, closeUpOn, closeUp, closeUpPaused, cam.openKey) {
         if (!closeUpOn) return@LaunchedEffect
-        val from = closeUpFrom?.let { k -> group.firstOrNull { it.key == k } }
-        val target = if (from == null) CloseUp.closerLens(lens.focusLens(), group.filter { !it.logical && it.hasAf }.map { it.focusLens() }) else null
-        if (from == null && target == null) return@LaunchedEffect
+        val cu = closeUp
+        // Only once the session of this lens is open (right after a switch the old one can still say "ready").
+        if (cam.openKey != lens.key) return@LaunchedEffect
         val tracker = CloseUpTracker()
-        // Give autofocus a moment on the newly opened lens first.
-        delay(1_500)
+        // At least 2 seconds on a lens (and time for autofocus) before deciding anything.
+        delay(2_000)
         while (true) {
             delay(200)
-            val d = controller.focusDiopters
+            val now = SystemClock.elapsedRealtime()
+            val raw = controller.focusDiopters
+            // No distance, or 0 before any real distance came in: the phone isn't reporting one.
+            val d = if (raw < 0f || (raw == 0f && !controller.focusReported)) -1f else raw
             val af = controller.afState
             val sharp = af == CameraMetadata.CONTROL_AF_STATE_PASSIVE_FOCUSED || af == CameraMetadata.CONTROL_AF_STATE_FOCUSED_LOCKED
-            val now = SystemClock.elapsedRealtime()
-            if (from != null) {
-                if (tracker.farEnough(now, d, sharp, from.minFocus)) {
-                    closeUpFrom = null
-                    lensKey = from.key
+            val unfocused = af == CameraMetadata.CONTROL_AF_STATE_PASSIVE_UNFOCUSED || af == CameraMetadata.CONTROL_AF_STATE_NOT_FOCUSED_LOCKED
+            val active = activeLens(lens, group, controller.activePhysicalId)
+            when {
+                cu != null -> {
+                    // Without a distance there's no telling how far the subject is: back only through the pill.
+                    if (d < 0f) { tracker.reset(); continue }
+                    val macro = cu.macro ?: active.takeIf { it.key != lens.key }?.focusLens()
+                    if (tracker.farEnough(now, d, sharp, CloseUp.backBelow(cu.from, macro, closeUpBounces))) {
+                        leaveCloseUp()
+                        break
+                    }
+                }
+                closeUpPaused -> {
+                    if (tracker.movedAway(now, d, sharp, active.minFocus)) {
+                        closeUpPaused = false
+                        break
+                    }
+                }
+                tracker.tooClose(now, d, sharp, unfocused, controller.afFailedScans, active.minFocus) -> {
+                    val current = active.focusLens()
+                    val others = group.filter { !it.logical && it.key != active.key }.map { it.focusLens() }
+                    val plan = CloseUp.plan(current, others, CloseUp.unopenable, if (lens.logical) lens.zoom?.lower else null, manual.zoom)
+                    if (plan == null) { tracker.reset(); continue }
+                    closeUpBounces = if (now - closeUpReturnAt < 10_000L) (closeUpBounces + 1).coerceAtMost(3) else 0
+                    when (plan) {
+                        is CloseUpPlan.Switch -> {
+                            closeUp = CloseUpState(lens.key, current, plan.lens, viaZoom = false, zoomBefore = manual.zoom)
+                            lensKey = plan.lens.key
+                        }
+                        is CloseUpPlan.Zoom -> {
+                            closeUp = CloseUpState(lens.key, current, null, viaZoom = true, zoomBefore = manual.zoom)
+                            manual = manual.copy(zoom = plan.ratio)
+                        }
+                    }
                     break
                 }
-            } else if (target != null && tracker.tooClose(now, d, sharp, lens.minFocus)) {
-                closeUpFrom = lens.key
-                lensKey = target.key
-                break
             }
+        }
+    }
+    // A close-up lens that doesn't open: remember it and go back.
+    LaunchedEffect(lens.key, closeUp) {
+        val cu = closeUp ?: return@LaunchedEffect
+        if (cu.viaZoom || lens.key == cu.fromKey) return@LaunchedEffect
+        val key = lens.key
+        val opened = withTimeoutOrNull(4_000) { snapshotFlow { cam.ready && cam.openKey == key }.first { it } }
+        if (opened == null) {
+            CloseUp.unopenable += key
+            leaveCloseUp()
         }
     }
 
@@ -511,7 +584,11 @@ private fun Viewfinder(lenses: List<Lens>, mode: Mode, run: IntervalState, launc
                                 controller.focusAt(o.x / w, o.y / h)
                             }
                             .pointerInputZoom(lens.key) { factor ->
-                                lens.zoom?.let { r -> manual = manual.copy(zoom = (manual.zoom * factor).coerceIn(r.lower, r.upper)) }
+                                lens.zoom?.let { r ->
+                                    // Zooming by hand takes over from a close-up zoom.
+                                    if (closeUp?.viaZoom == true) closeUp = null
+                                    manual = manual.copy(zoom = (manual.zoom * factor).coerceIn(r.lower, r.upper))
+                                }
                             },
                     )
                     FocusRing(focusPoint, focusAt)
@@ -522,7 +599,7 @@ private fun Viewfinder(lenses: List<Lens>, mode: Mode, run: IntervalState, launc
                     Column(Modifier.align(Alignment.TopCenter).padding(top = 10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         if (cam.recording) RecordingClock(cam.recordStart)
                         if (cam.bracketTotal > 0) Tag(stringResource(R.string.bracket_progress, cam.bracketDone + 1, cam.bracketTotal), CtrlColors.Accent.copy(alpha = 0.85f))
-                        if (closeUpFrom != null && !lens.logical) Tag(stringResource(R.string.closeup_active), Scrim)
+                        if (closeUp != null) MacroPill { leaveCloseUp(); closeUpPaused = true }
                         cam.error?.let { e -> Tag(stringResource(e), Color(0xCCB3261E)) }
                         if (mode == Mode.PHOTO && settings.format != PhotoFormat.JPEG && raw == null) Tag(stringResource(R.string.no_raw_here), Scrim)
                         if (mode == Mode.NIGHT && cam.nightTotal > 0) {
@@ -554,7 +631,12 @@ private fun Viewfinder(lenses: List<Lens>, mode: Mode, run: IntervalState, launc
             }
 
             // ---------- Lenses ----------
-            LensRow(group, lens) { l -> lensKey = l.key; closeUpFrom = null }
+            LensRow(group, lens) { l ->
+                lensKey = l.key
+                lensPinned = !l.logical
+                closeUp = null
+                closeUpPaused = false
+            }
 
             // ---------- Pro controls, or the mode's own options ----------
             AnimatedVisibility(pro && mode != Mode.SCAN, enter = fadeIn(), exit = fadeOut()) {
@@ -586,7 +668,9 @@ private fun Viewfinder(lenses: List<Lens>, mode: Mode, run: IntervalState, launc
                 RoundIcon(Icons.Outlined.Cameraswitch, stringResource(R.string.switch_camera), enabled = !cam.recording && !cam.busy && lenses.any { (it.facing == CameraMetadata.LENS_FACING_FRONT) != front }) {
                     front = !front
                     lensKey = null
-                    closeUpFrom = null
+                    lensPinned = false
+                    closeUp = null
+                    closeUpPaused = false
                 }
             }
 
@@ -622,7 +706,6 @@ private fun Viewfinder(lenses: List<Lens>, mode: Mode, run: IntervalState, launc
 }
 
 /** The close-up view of a lens: its key and its closest focus as reported. */
-private fun Lens.focusLens() = FocusLens(key, minFocus, focusCalibrated)
 
 private fun chooseVideo(lens: Lens, uhd: Boolean): Size? {
     val exact = lens.videoSizes.filter { it.width * 9 == it.height * 16 }
@@ -685,6 +768,32 @@ private fun RecordingClock(start: Long) {
         Spacer(Modifier.width(6.dp))
         Text(formatDuration(now - start), style = CtrlType.Status, color = Ink)
     }
+}
+
+/** Where CameraCtrl came from when it switched for a close-up, and how it switched. */
+private data class CloseUpState(
+    /** The lens to go back to. */
+    val fromKey: String,
+    /** The lens that couldn't focus close enough (on AUTO: the lens AUTO was using). */
+    val from: FocusLens,
+    /** The close-up lens, when CameraCtrl opened one (null when it zoomed AUTO out). */
+    val macro: FocusLens?,
+    val viaZoom: Boolean,
+    val zoomBefore: Float,
+)
+
+/** Shown while a close-up lens is in use; a tap goes back. */
+@Composable
+private fun MacroPill(onClick: () -> Unit) {
+    val desc = stringResource(R.string.closeup_pill_desc)
+    Text(
+        stringResource(R.string.closeup_pill),
+        style = CtrlType.Status,
+        color = CtrlColors.OnAccent,
+        modifier = Modifier.padding(top = 6.dp).clip(RoundedCornerShape(8.dp)).background(CtrlColors.Accent.copy(alpha = 0.9f))
+            .semantics { contentDescription = desc }
+            .clickable(onClick = onClick).padding(horizontal = 12.dp, vertical = 6.dp),
+    )
 }
 
 @Composable

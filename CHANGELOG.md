@@ -4,6 +4,26 @@ What changed in each CameraCtrl release. Every release on the [Releases page](ht
 
 To publish a new version: bump `versionCode` and `versionName` in `app/build.gradle.kts`, add a section here, and push to `main`. Pushes without a version bump only build; they don't make a release.
 
+## Unreleased
+
+Not run on a phone yet: built and unit-tested by CI only.
+
+### Fixed
+
+- **Close-up (macro) lens switching now also works in AUTO.** Before, CameraCtrl only switched lenses for close-ups when you were on a single lens, on the assumption that the phone's AUTO multi-camera does it by itself. Many phones (OPPO/ColorOS among them) don't do that for other apps than their own camera, so in AUTO, the default, nothing happened. CameraCtrl now watches AUTO too: when autofocus sits at the near end of the lens AUTO is using (the phone says which one) and the picture stays unsharp for about a second, it opens the lens that can focus closer. If the phone doesn't let apps open that lens, or doesn't list its separate lenses at all, CameraCtrl instead zooms AUTO out to its smallest zoom ratio (for example 0.6×), which makes the phone use its widest lens. When the subject is far enough again it goes back to AUTO at the zoom you had. A lens that fails to open within 4 seconds isn't tried again until the app restarts (AUTO zooms out instead).
+- **Lenses that don't report focus in real units are no longer skipped.** Before, close-up switching only compared lenses whose focus distances are calibrated, and many phones report them as uncalibrated, so no lens was ever chosen. Where both lenses report real diopters CameraCtrl still picks the lens that focuses clearly closest; otherwise it now picks the widest lens with autofocus that is clearly wider than the one in use (phones put their close-up focus on the ultrawide). Fixed-focus lenses are never picked.
+- **"Too close" no longer depends on calibrated units either.** CameraCtrl compares the focus distance with the lens's own closest focus (the same units), and counts 90 % of the way there as the near end (it was 97 %, which some phones never report). If the phone reports no focus distance at all (or only 0), CameraCtrl goes by the autofocus state alone and waits longer: about 3 seconds unsharp, ending in a failed focus or after two failed focus scans. In that case it can't tell when the subject is far again, so it goes back only when you tap the MACRO pill.
+- **Less flipping between lenses.** After every switch CameraCtrl waits at least 2 seconds before deciding again. Going back needs a sharp picture well inside what the first lens can focus, for 1.5 seconds (with real units: closer than 80 % of the first lens's closest focus; otherwise below 40 % of the close-up lens's own range). Each time it switches again within 10 seconds of going back, the way back gets twice as strict (up to three times).
+
+### Added
+
+- **MACRO pill in the viewfinder.** While CameraCtrl uses a close-up lens (or has zoomed AUTO out for a close-up), a violet **MACRO** pill shows at the top of the viewfinder. Tapping it goes back straight away and pauses automatic switching until the subject has moved away (sharp and away from the near end for 1.5 seconds), or until you change lens, mode or front/back camera. Pinching to zoom while AUTO is zoomed out for a close-up hands the zoom back to you.
+- **Close-up switching on the camera modes page.** Every lens now has a "Close-up switching" row: for AUTO, which lens it switches to and/or which zoom it falls back to; for each separate lens, whether it can be used (compared by closest focus, or by lens width because focus isn't in real units), or why not (fixed focus, didn't open when CameraCtrl tried it), and which lens it would switch to from there. If close-ups still don't switch on your phone, a screenshot of this page shows why.
+
+### Changed
+
+- Close-up switching still doesn't run while recording, in Interval mode or with manual focus, and it leaves a lens alone that you picked yourself by tapping it in the lens row (tap AUTO to turn it back on). **Settings > Photo > Switch lens for close-ups** is still on by default; its description now mentions AUTO.
+
 ## v0.5.1 (2026-11-21)
 
 Built and checked by CI only: nothing in this release had been run on a phone when it was published.

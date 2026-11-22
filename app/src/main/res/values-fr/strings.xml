@@ -83,7 +83,7 @@
     <string name="raw_private">RAW_PRIVATE (format privé, impossible à enregistrer)</string>
     <string name="ten_bit">HDR 10 bits</string>
     <string name="closest_focus">mise au point minimale %1$s</string>
-    <string name="focus_uncalibrated">distances de mise au point sans unités réelles (pas utilisées pour changer d\'objectif en gros plan)</string>
+    <string name="focus_uncalibrated">distances de mise au point sans unités réelles</string>
     <string name="ten_bit_hlg">HDR 10 bits (HLG)</string>
     <string name="row_extras">Extras photo</string>
     <string name="extra_ultra_hdr">Ultra HDR %1$s</string>
@@ -204,7 +204,6 @@
     <string name="bracket_pill_on">BKT %1$d×±%2$d</string>
     <string name="bracket_progress">BRACKETING · %1$d SUR %2$d</string>
     <string name="bracket_unavailable">Le bracketing a besoin d\'une exposition stable. Attendez un instant et réessayez.</string>
-    <string name="closeup_active">OBJECTIF GROS PLAN · TOUCHEZ UN OBJECTIF POUR CHOISIR</string>
     <string name="volume_shutter">Touches de volume pour photographier</string>
     <string name="volume_shutter_sub">Chaque touche de volume prend une photo, ou démarre et arrête une vidéo, quand le viseur est ouvert</string>
     <string name="zsl">Zéro délai au déclenchement</string>
@@ -212,7 +211,21 @@
     <string name="ultra_hdr">Photos Ultra HDR</string>
     <string name="ultra_hdr_sub">Des JPEG avec une carte de gain HDR, des hautes lumières plus vives sur les écrans HDR, sur les objectifs qui le proposent. Les autres écrans affichent un JPEG normal.</string>
     <string name="closeup_switch">Changer d\'objectif en gros plan</string>
-    <string name="closeup_switch_sub">Quand un objectif ne peut pas faire la mise au point aussi près, passer à celui qui fait la mise au point au plus près, puis revenir, selon la mise au point minimale de chaque objectif indiquée par votre téléphone</string>
+    <string name="closeup_switch_sub">Quand le sujet est plus proche que la mise au point minimale de l\'objectif utilisé, passer à l\'objectif qui fait la mise au point plus près (aussi en AUTO), puis revenir, selon ce que votre téléphone indique pour chaque objectif</string>
+    <string name="row_closeup">Changement d\'objectif en gros plan</string>
+    <string name="closeup_auto_lens">Surveillé en AUTO : passe à l\'objectif %1$s quand le sujet est trop proche</string>
+    <string name="closeup_auto_lens_zoom">Surveillé en AUTO : passe à l\'objectif %1$s quand le sujet est trop proche, ou dézoome à %2$s× si cet objectif ne s\'ouvre pas</string>
+    <string name="closeup_auto_zoom">Surveillé en AUTO : aucun objectif gros plan séparé n\'est utilisable, il dézoome donc à %1$s× (l\'objectif le plus large de votre téléphone) quand le sujet est trop proche</string>
+    <string name="closeup_auto_none">Surveillé en AUTO, mais il n\'y a aucun objectif vers lequel passer ni de zoom plus large</string>
+    <string name="closeup_ok_calibrated">Utilisable : comparé par mise au point minimale</string>
+    <string name="closeup_ok_width">Utilisable : mise au point sans unités réelles, la largeur de l\'objectif est donc utilisée</string>
+    <string name="closeup_no_width">Non comparé : mise au point sans unités réelles et aucune focale indiquée</string>
+    <string name="closeup_no_af">Non utilisé : mise au point fixe</string>
+    <string name="closeup_unopenable">Non utilisé : il ne s\'est pas ouvert quand CameraCtrl y est passé (jusqu\'au redémarrage de l\'app)</string>
+    <string name="closeup_from_lens">Depuis cet objectif : passe à l\'objectif %1$s</string>
+    <string name="closeup_from_none">Depuis cet objectif : aucun objectif vers lequel passer</string>
+    <string name="closeup_pill">MACRO</string>
+    <string name="closeup_pill_desc">Objectif gros plan utilisé. Touchez pour revenir</string>
 
     <!-- Viewfinder aids -->
     <string name="group_viewfinder">Viseur</string>

@@ -83,7 +83,7 @@
     <string name="raw_private">RAW_PRIVATE (privates Format, kann nicht gespeichert werden)</string>
     <string name="ten_bit">10-Bit-HDR</string>
     <string name="closest_focus">Naheinstellgrenze %1$s</string>
-    <string name="focus_uncalibrated">Fokusabstände nicht in echten Einheiten (nicht für den Nahaufnahme-Wechsel genutzt)</string>
+    <string name="focus_uncalibrated">Fokusabstände nicht in echten Einheiten</string>
     <string name="ten_bit_hlg">10-Bit-HDR (HLG)</string>
     <string name="row_extras">Foto-Extras</string>
     <string name="extra_ultra_hdr">Ultra HDR %1$s</string>
@@ -202,7 +202,6 @@
     <string name="bracket_pill_on">BKT %1$d×±%2$d</string>
     <string name="bracket_progress">BELICHTUNGSREIHE · %1$d VON %2$d</string>
     <string name="bracket_unavailable">Für die Belichtungsreihe muss sich die Belichtung erst einpendeln. Warte kurz und versuch es noch einmal.</string>
-    <string name="closeup_active">NAHAUFNAHME-OBJEKTIV · TIPPE AUF EIN OBJEKTIV, UM SELBST ZU WÄHLEN</string>
     <string name="volume_shutter">Lautstärketasten lösen aus</string>
     <string name="volume_shutter_sub">Jede Lautstärketaste nimmt ein Foto auf oder startet und stoppt ein Video, solange der Sucher offen ist</string>
     <string name="zsl">Auslösen ohne Verzögerung</string>
@@ -210,7 +209,21 @@
     <string name="ultra_hdr">Ultra-HDR-Fotos</string>
     <string name="ultra_hdr_sub">JPEGs mit HDR-Gain-Map, hellere Lichter auf HDR-Bildschirmen, auf Objektiven, die das bieten. Andere Bildschirme zeigen ein normales JPEG.</string>
     <string name="closeup_switch">Objektiv für Nahaufnahmen wechseln</string>
-    <string name="closeup_switch_sub">Wenn ein Objektiv nicht so nah fokussieren kann, zum Objektiv mit der kürzesten Naheinstellgrenze wechseln und wieder zurück, anhand der Naheinstellgrenze, die dein Smartphone für jedes Objektiv meldet</string>
+    <string name="closeup_switch_sub">Wenn das Motiv näher ist, als das aktive Objektiv fokussieren kann, zum Objektiv wechseln, das näher fokussiert (auch in AUTO), und wieder zurück, anhand dessen, was dein Smartphone für jedes Objektiv meldet</string>
+    <string name="row_closeup">Objektivwechsel für Nahaufnahmen</string>
+    <string name="closeup_auto_lens">In AUTO aktiv: wechselt zu Objektiv %1$s, wenn das Motiv zu nah ist</string>
+    <string name="closeup_auto_lens_zoom">In AUTO aktiv: wechselt zu Objektiv %1$s, wenn das Motiv zu nah ist, oder zoomt auf %2$s× heraus, wenn sich dieses Objektiv nicht öffnen lässt</string>
+    <string name="closeup_auto_zoom">In AUTO aktiv: Kein eigenes Nahaufnahme-Objektiv nutzbar, daher wird auf %1$s× herausgezoomt (das weiteste Objektiv deines Smartphones), wenn das Motiv zu nah ist</string>
+    <string name="closeup_auto_none">In AUTO aktiv, aber es gibt kein Objektiv zum Wechseln und keinen weiteren Zoom</string>
+    <string name="closeup_ok_calibrated">Nutzbar: verglichen nach Naheinstellgrenze</string>
+    <string name="closeup_ok_width">Nutzbar: Fokusabstände nicht in echten Einheiten, daher zählt die Brennweite</string>
+    <string name="closeup_no_width">Nicht verglichen: Fokusabstände nicht in echten Einheiten und keine Brennweite gemeldet</string>
+    <string name="closeup_no_af">Nicht genutzt: Fixfokus</string>
+    <string name="closeup_unopenable">Nicht genutzt: ließ sich beim Wechsel nicht öffnen (bis zum Neustart der App)</string>
+    <string name="closeup_from_lens">Von diesem Objektiv: wechselt zu Objektiv %1$s</string>
+    <string name="closeup_from_none">Von diesem Objektiv: kein Objektiv zum Wechseln</string>
+    <string name="closeup_pill">MAKRO</string>
+    <string name="closeup_pill_desc">Nahaufnahme-Objektiv aktiv. Tippe, um zurückzukehren</string>
 
     <!-- Viewfinder aids -->
     <string name="group_viewfinder">Sucher</string>

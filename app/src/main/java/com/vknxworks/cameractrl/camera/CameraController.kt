@@ -122,6 +122,8 @@ data class CamState(
     val bracketTotal: Int = 0,
     /** What the open video session actually records with (frame rate, HDR, stabilisation), for the status line. */
     val videoExtras: String = "",
+    /** Key of the lens whose session is configured (set together with [ready]). */
+    val openKey: String? = null,
 )
 
 /** One interval shot: where it was saved (null when it wasn't), and the JPEG itself. */
@@ -167,6 +169,15 @@ class CameraController(private val context: Context) {
     @Volatile var focusDiopters = -1f
         private set
     @Volatile var afState = -1
+        private set
+    /** A focus distance above 0 has been reported since the camera opened (so a 0 means infinity, not "not reported"). */
+    @Volatile var focusReported = false
+        private set
+    /** Autofocus scans that ended without focus since the camera opened. */
+    @Volatile var afFailedScans = 0
+        private set
+    /** On the AUTO multi-camera: the physical lens the phone says it is using (LOGICAL_MULTI_CAMERA_ACTIVE_PHYSICAL_ID). */
+    @Volatile var activePhysicalId: String? = null
         private set
     /** Set (on the camera thread) while a flash photo waits for the precapture metering to finish. */
     private var precapture: Precapture? = null
@@ -318,7 +329,7 @@ class CameraController(private val context: Context) {
                     if (device != d) { sess.close(); return }
                     session = sess
                     startRepeating()
-                    state.update { it.copy(ready = true) }
+                    state.update { it.copy(ready = true, openKey = s.lens.key) }
                 }
 
                 override fun onConfigureFailed(sess: CameraCaptureSession) {
@@ -472,11 +483,21 @@ class CameraController(private val context: Context) {
         override fun onCaptureCompleted(session: CameraCaptureSession, request: CaptureRequest, result: TotalCaptureResult) {
             result.get(CaptureResult.SENSOR_EXPOSURE_TIME)?.let { lastAeNs = it }
             result.get(CaptureResult.SENSOR_SENSITIVITY)?.let { lastAeIso = it }
-            // A physical lens reports its own focus distance in the physical result.
-            val phys = setup?.lens?.physicalId
+            // A physical lens reports its own focus distance in the physical result. On the AUTO multi-camera the
+            // phone may say which lens it is using; its own result is preferred where the phone sends one.
+            val lens = setup?.lens
+            val active = if (lens?.logical == true) runCatching { result.get(CaptureResult.LOGICAL_MULTI_CAMERA_ACTIVE_PHYSICAL_ID) }.getOrNull() else null
+            activePhysicalId = active
+            val phys = lens?.physicalId ?: active
             val own = phys?.let { runCatching { result.physicalCameraTotalResults[it] }.getOrNull() } ?: result
-            focusDiopters = own.get(CaptureResult.LENS_FOCUS_DISTANCE) ?: result.get(CaptureResult.LENS_FOCUS_DISTANCE) ?: -1f
-            afState = result.get(CaptureResult.CONTROL_AF_STATE) ?: -1
+            val d = own.get(CaptureResult.LENS_FOCUS_DISTANCE) ?: result.get(CaptureResult.LENS_FOCUS_DISTANCE) ?: -1f
+            focusDiopters = d
+            if (d > 0f) focusReported = true
+            val af = result.get(CaptureResult.CONTROL_AF_STATE) ?: -1
+            val before = afState
+            val wasScanning = before == CaptureResult.CONTROL_AF_STATE_PASSIVE_SCAN || before == CaptureResult.CONTROL_AF_STATE_ACTIVE_SCAN
+            if (wasScanning && (af == CaptureResult.CONTROL_AF_STATE_PASSIVE_UNFOCUSED || af == CaptureResult.CONTROL_AF_STATE_NOT_FOCUSED_LOCKED)) afFailedScans++
+            afState = af
             precapture?.let { p ->
                 // Flash photos: after the trigger, wait until the precapture metering has started and then ended.
                 // A camera that never reports the metering state gets a few frames instead.
@@ -1038,6 +1059,9 @@ class CameraController(private val context: Context) {
         precapture = null
         focusDiopters = -1f
         afState = -1
+        focusReported = false
+        afFailedScans = 0
+        activePhysicalId = null
         // A night burst cut short still saves the frames that arrived.
         night?.finishNow()
         night = null
