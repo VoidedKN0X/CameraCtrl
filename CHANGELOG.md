@@ -8,8 +8,6 @@ To publish a new version: bump `versionCode` and `versionName` in `app/build.gra
 
 Built and checked by CI only: nothing in this release had been run on a phone when it was published.
 
-Not run on a phone yet: built and unit-tested by CI only.
-
 ### Fixed
 
 - **Close-up (macro) lens switching now also works in AUTO.** Before, CameraCtrl only switched lenses for close-ups when you were on a single lens, on the assumption that the phone's AUTO multi-camera does it by itself. Many phones (OPPO/ColorOS among them) don't do that for other apps than their own camera, so in AUTO, the default, nothing happened. CameraCtrl now watches AUTO too: when autofocus sits at the near end of the lens AUTO is using (the phone says which one) and the picture stays unsharp for about a second, it opens the lens that can focus closer. If the phone doesn't let apps open that lens, or doesn't list its separate lenses at all, CameraCtrl instead zooms AUTO out to its smallest zoom ratio (for example 0.6×), which makes the phone use its widest lens. When the subject is far enough again it goes back to AUTO at the zoom you had. A lens that fails to open within 4 seconds isn't tried again until the app restarts (AUTO zooms out instead).
